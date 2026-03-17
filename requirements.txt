@@ -1,0 +1,9 @@
+roboflow
+blobconverter
+openvino-dev
+onnx
+onnxsim
+depthai
+opencv-python
+numpy
+onnxruntime

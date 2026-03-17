@@ -1,0 +1,31 @@
+# Model weights
+*.pt
+*.pth
+*.onnx
+*.blob
+
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+*.log
+
+# YOLOv6 clone
+kaggle/YOLOv6/
+
+# Output directories
+output/
+runs/
