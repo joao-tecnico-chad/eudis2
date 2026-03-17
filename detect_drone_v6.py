@@ -17,8 +17,8 @@ from pathlib import Path
 YOLOV6_DIR = Path("YOLOv6")
 
 MODELS = {
-    "v6n": YOLOV6_DIR / "runs" / "train" / "drone_yolov6n" / "weights" / "best_ckpt.pt",
-    "v6s": YOLOV6_DIR / "runs" / "train" / "drone_yolov6s" / "weights" / "best_ckpt.pt",
+    "v6n": Path("best_yolov6n.pt"),
+    "v6s": Path("best_yolov6s.pt"),
 }
 
 

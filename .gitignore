@@ -1,5 +1,4 @@
-# Model weights
-*.pt
+# Model weights (keep .pt for sharing trained models)
 *.pth
 *.onnx
 *.blob
