@@ -1,4 +1,5 @@
 roboflow
+kaggle
 blobconverter
 openvino-dev
 onnx

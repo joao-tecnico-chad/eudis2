@@ -24,7 +24,11 @@ venv/
 *.log
 
 # YOLOv6 clone
+YOLOv6/
 kaggle/YOLOv6/
+
+# Datasets
+datasets/
 
 # Output directories
 output/
