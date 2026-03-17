@@ -9,6 +9,7 @@ Usage:
     python train.py --model v6s      # Train v6s
     python train.py --resume         # Resume last interrupted training
     python train.py --model v6s --resume
+    python train.py --clean          # Re-merge dataset (includes negatives)
 
 Stop anytime with Ctrl+C — training auto-saves checkpoints every epoch.
 Resume later with --resume and it picks up where it left off.
@@ -21,6 +22,7 @@ Setup:
 
 import argparse
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -33,6 +35,10 @@ MERGED_DIR = DATASET_DIR / "merged"
 YOLOV6_DIR = Path("YOLOv6")
 IMG_SIZE = 416
 EPOCHS = 100
+
+NEGATIVE_DATASET = "imsparsh/coco-person-only-detection"
+NEGATIVE_DIR = DATASET_DIR / "negatives"
+NEGATIVE_COUNT = 800
 
 MODELS = {
     "v6n": {"conf": "configs/yolov6n.py", "batch": 32, "name": "drone_yolov6n"},
@@ -86,7 +92,35 @@ def download_datasets() -> None:
         print("Kaggle yolo-drone dataset already downloaded.")
 
 
-def merge_datasets() -> None:
+def download_negatives() -> bool:
+    """Download COCO person images as negative samples (no drones).
+
+    Returns True if negatives are available, False otherwise.
+    """
+    if NEGATIVE_DIR.exists() and any(NEGATIVE_DIR.glob("*.jpg")):
+        count = len(list(NEGATIVE_DIR.glob("*.jpg")) + list(NEGATIVE_DIR.glob("*.png")))
+        print(f"Negative samples already downloaded ({count} images).")
+        return True
+
+    print(f"Downloading negative samples from {NEGATIVE_DATASET}...")
+    try:
+        NEGATIVE_DIR.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["kaggle", "datasets", "download", "-d", NEGATIVE_DATASET,
+             "-p", str(NEGATIVE_DIR), "--unzip", "-q"],
+            check=True,
+        )
+        # Count what we got
+        images = list(NEGATIVE_DIR.rglob("*.jpg")) + list(NEGATIVE_DIR.rglob("*.png"))
+        print(f"Downloaded {len(images)} negative sample images.")
+        return len(images) > 0
+    except Exception as e:
+        print(f"WARNING: Failed to download negatives: {e}")
+        print("Training will continue without negative samples.")
+        return False
+
+
+def merge_datasets(include_negatives: bool = False) -> None:
     """Merge all datasets into a single YOLO-format directory."""
     if MERGED_DIR.exists() and any((MERGED_DIR / "images" / "train").glob("*")):
         count = len(list((MERGED_DIR / "images" / "train").glob("*")))
@@ -136,6 +170,27 @@ def merge_datasets() -> None:
         lbl_dir = img_dir.parent / "labels"
         if lbl_dir.exists():
             copy_split(img_dir, lbl_dir, TRAIN_IMG, TRAIN_LBL)
+    print(f"After drones: {len(list(TRAIN_IMG.glob('*')))} train, {len(list(VAL_IMG.glob('*')))} val")
+
+    # 4. Negative samples (background images with empty labels)
+    if include_negatives:
+        neg_images = list(NEGATIVE_DIR.rglob("*.jpg")) + list(NEGATIVE_DIR.rglob("*.png"))
+        random.seed(42)
+        random.shuffle(neg_images)
+        neg_images = neg_images[:NEGATIVE_COUNT]
+
+        n_train = int(len(neg_images) * 0.9)
+        for i, img in enumerate(neg_images):
+            if i < n_train:
+                dst_img, dst_lbl = TRAIN_IMG, TRAIN_LBL
+            else:
+                dst_img, dst_lbl = VAL_IMG, VAL_LBL
+            dest_name = f"neg_{img.stem}{img.suffix}"
+            shutil.copy(img, dst_img / dest_name)
+            (dst_lbl / f"neg_{img.stem}.txt").touch()
+
+        print(f"Added {len(neg_images)} negative samples ({n_train} train, {len(neg_images) - n_train} val)")
+
     print(f"Final: {len(list(TRAIN_IMG.glob('*')))} train, {len(list(VAL_IMG.glob('*')))} val")
 
 
@@ -206,10 +261,17 @@ def main() -> None:
                         help="Model variant: v6n (nano/fast) or v6s (small/accurate)")
     parser.add_argument("--resume", action="store_true",
                         help="Resume training from last checkpoint")
+    parser.add_argument("--clean", action="store_true",
+                        help="Delete merged dataset and re-merge (use when adding negatives)")
     args = parser.parse_args()
 
+    if args.clean and MERGED_DIR.exists():
+        print("Cleaning merged dataset...")
+        shutil.rmtree(MERGED_DIR)
+
     download_datasets()
-    merge_datasets()
+    has_negatives = download_negatives()
+    merge_datasets(include_negatives=has_negatives)
     setup_yolov6()
     data_yaml = write_data_yaml()
     train(args.model, data_yaml, args.resume)
