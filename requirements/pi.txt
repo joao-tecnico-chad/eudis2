@@ -1,0 +1,5 @@
+depthai>=2.24
+adafruit-circuitpython-bmp3xx
+gpiozero
+numpy
+opencv-python-headless

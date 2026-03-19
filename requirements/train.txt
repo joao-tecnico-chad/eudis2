@@ -1,0 +1,9 @@
+roboflow
+kaggle
+blobconverter
+openvino-dev
+onnx
+onnxsim
+ultralytics
+torch
+torchvision

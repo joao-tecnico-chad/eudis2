@@ -1,0 +1,3 @@
+-r pi.txt
+onnxruntime
+opencv-python

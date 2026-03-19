@@ -1,0 +1,12 @@
+[project]
+name = "drone-guardian"
+version = "1.0.0"
+description = "Autonomous Interceptor Drone Detection & Neutralisation System"
+requires-python = ">=3.10"
+
+[project.scripts]
+guardian = "guardian.__main__:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

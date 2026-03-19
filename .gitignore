@@ -1,6 +1,9 @@
-# Model weights (keep .pt for sharing trained models)
+# Model weights
+models/*.pt
+models/*.onnx
+models/*.blob
+models/*.pth
 *.pth
-*.onnx
 *.blob
 
 # macOS
@@ -11,6 +14,7 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+*.egg-info/
 
 # IDE
 .idea/
@@ -24,7 +28,7 @@ venv/
 
 # YOLOv6 clone
 YOLOv6/
-kaggle/YOLOv6/
+tools/kaggle/YOLOv6/
 
 # Datasets
 datasets/
@@ -32,3 +36,6 @@ datasets/
 # Output directories
 output/
 runs/
+
+# Environment
+.env
