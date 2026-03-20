@@ -25,68 +25,95 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     <title>Drone Guardian</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #1a1a2e; color: #eee; font-family: monospace; }
-        .container { display: flex; gap: 20px; padding: 20px; max-width: 1200px; margin: auto; }
-        .video { flex: 2; }
-        .video img { width: 100%%; border: 2px solid #333; border-radius: 4px; }
-        .panel { flex: 1; }
-        h1 { padding: 20px; text-align: center; color: #0f0; font-size: 1.4em; }
-        .card { background: #16213e; padding: 15px; margin-bottom: 10px; border-radius: 4px;
-                border-left: 3px solid #333; }
-        .card.active { border-left-color: #0f0; }
-        .card.inactive { border-left-color: #f00; }
-        .card h3 { margin-bottom: 8px; font-size: 0.9em; color: #888; }
-        .card .value { font-size: 1.3em; }
-        .armed { color: #ff0; font-weight: bold; }
-        .fired { color: #f00; font-weight: bold; animation: pulse 0.5s infinite; }
-        @keyframes pulse { 50%% { opacity: 0.5; } }
-        .layer { display: flex; justify-content: space-between; padding: 4px 0;
-                 border-bottom: 1px solid #222; }
-        .layer .status { font-weight: bold; }
-        .pass { color: #0f0; }
-        .fail { color: #666; }
+        body { background: #0a0a1a; color: #eee; font-family: 'Courier New', monospace;
+               height: 100vh; overflow: hidden; }
+        .header { display: flex; align-items: center; justify-content: space-between;
+                  padding: 10px 20px; background: #0d1117; border-bottom: 1px solid #1a2332; }
+        .header h1 { color: #00ff88; font-size: 1.1em; letter-spacing: 3px; }
+        .header .status-badge { padding: 4px 14px; border-radius: 3px; font-size: 0.85em;
+                                font-weight: bold; letter-spacing: 1px; }
+        .badge-monitoring { background: #1a2332; color: #4a9eff; border: 1px solid #234; }
+        .badge-armed { background: #332b00; color: #ffcc00; border: 1px solid #554400;
+                       animation: pulse 1s infinite; }
+        .badge-fired { background: #330000; color: #ff3333; border: 1px solid #550000;
+                       animation: pulse 0.4s infinite; }
+        @keyframes pulse { 50%% { opacity: 0.6; } }
+
+        .main { display: flex; height: calc(100vh - 50px); }
+
+        .video-panel { flex: 1; min-width: 0; display: flex; align-items: center;
+                       justify-content: center; padding: 10px; background: #0a0a1a; }
+        .video-panel img { max-width: 100%%; max-height: 100%%; object-fit: contain;
+                           border: 1px solid #1a2332; border-radius: 3px; }
+
+        .side-panel { width: 260px; min-width: 260px; background: #0d1117;
+                      border-left: 1px solid #1a2332; padding: 12px; overflow-y: auto;
+                      display: flex; flex-direction: column; gap: 8px; }
+
+        .card { background: #161b22; padding: 10px 12px; border-radius: 4px;
+                border: 1px solid #1a2332; }
+        .card h3 { font-size: 0.7em; color: #555; text-transform: uppercase;
+                   letter-spacing: 1px; margin-bottom: 4px; }
+        .card .value { font-size: 1.15em; color: #ccc; }
+
+        .layers-card { background: #161b22; padding: 10px 12px; border-radius: 4px;
+                       border: 1px solid #1a2332; }
+        .layers-card h3 { font-size: 0.7em; color: #555; text-transform: uppercase;
+                          letter-spacing: 1px; margin-bottom: 8px; }
+        .layer-row { display: flex; justify-content: space-between; align-items: center;
+                     padding: 5px 0; border-bottom: 1px solid #1a2332; }
+        .layer-row:last-child { border-bottom: none; }
+        .layer-name { font-size: 0.8em; color: #888; }
+        .layer-status { font-size: 0.8em; font-weight: bold; padding: 1px 8px;
+                        border-radius: 2px; }
+        .layer-pass { color: #00ff88; background: #0a2a1a; }
+        .layer-fail { color: #555; background: #1a1a1a; }
+
+        .stat-row { display: flex; gap: 8px; }
+        .stat-row .card { flex: 1; }
     </style>
 </head>
 <body>
-    <h1>DRONE GUARDIAN</h1>
-    <div class="container">
-        <div class="video">
+    <div class="header">
+        <h1>DRONE GUARDIAN</h1>
+        <span class="status-badge badge-monitoring" id="status-badge">MONITORING</span>
+    </div>
+    <div class="main">
+        <div class="video-panel">
             <img id="stream" src="/stream" alt="Live Feed">
         </div>
-        <div class="panel">
-            <div class="card" id="status-card">
-                <h3>SYSTEM STATUS</h3>
-                <div class="value" id="system-status">INITIALIZING</div>
+        <div class="side-panel">
+            <div class="stat-row">
+                <div class="card">
+                    <h3>FPS</h3>
+                    <div class="value" id="fps">--</div>
+                </div>
+                <div class="card">
+                    <h3>Drones</h3>
+                    <div class="value" id="detections">0</div>
+                </div>
             </div>
             <div class="card">
-                <h3>ALTITUDE</h3>
+                <h3>Altitude</h3>
                 <div class="value" id="altitude">--</div>
             </div>
-            <div class="card">
-                <h3>DETECTIONS</h3>
-                <div class="value" id="detections">--</div>
-            </div>
-            <div class="card">
-                <h3>FPS</h3>
-                <div class="value" id="fps">--</div>
-            </div>
-            <div class="card">
-                <h3>ACTIVATION LAYERS</h3>
-                <div class="layer">
-                    <span>L1 Altitude</span>
-                    <span class="status" id="l1">--</span>
+            <div class="layers-card">
+                <h3>Activation Layers</h3>
+                <div class="layer-row">
+                    <span class="layer-name">L1 Altitude</span>
+                    <span class="layer-status layer-fail" id="l1">FAIL</span>
                 </div>
-                <div class="layer">
-                    <span>L2 Centroid</span>
-                    <span class="status" id="l2">--</span>
+                <div class="layer-row">
+                    <span class="layer-name">L2 Centroid</span>
+                    <span class="layer-status layer-fail" id="l2">FAIL</span>
                 </div>
-                <div class="layer">
-                    <span>L3 Size</span>
-                    <span class="status" id="l3">--</span>
+                <div class="layer-row">
+                    <span class="layer-name">L3 Size</span>
+                    <span class="layer-status layer-fail" id="l3">FAIL</span>
                 </div>
-                <div class="layer">
-                    <span>L4 Persistence</span>
-                    <span class="status" id="l4">--</span>
+                <div class="layer-row">
+                    <span class="layer-name">L4 Persist</span>
+                    <span class="layer-status layer-fail" id="l4">0/5</span>
                 </div>
             </div>
         </div>
@@ -95,37 +122,33 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         function update() {
             fetch('/telemetry').then(r => r.json()).then(d => {
                 document.getElementById('altitude').textContent =
-                    d.altitude_delta_m.toFixed(1) + 'm (ref + ' + d.altitude_margin_m.toFixed(0) + 'm)';
+                    d.altitude_delta_m.toFixed(1) + 'm';
                 document.getElementById('detections').textContent = d.detection_count;
-                document.getElementById('fps').textContent = d.fps.toFixed(1);
+                document.getElementById('fps').textContent = d.fps.toFixed(0);
 
                 const a = d.activation;
                 const setLayer = (id, val) => {
                     const el = document.getElementById(id);
                     el.textContent = val ? 'PASS' : 'FAIL';
-                    el.className = 'status ' + (val ? 'pass' : 'fail');
+                    el.className = 'layer-status ' + (val ? 'layer-pass' : 'layer-fail');
                 };
                 setLayer('l1', a.layer1_altitude);
                 setLayer('l2', a.layer2_centroid);
                 setLayer('l3', a.layer3_size);
                 const l4 = document.getElementById('l4');
                 l4.textContent = a.layer4_count + '/5';
-                l4.className = 'status ' + (a.layer4_count >= 5 ? 'pass' : 'fail');
+                l4.className = 'layer-status ' + (a.layer4_count >= 5 ? 'layer-pass' : 'layer-fail');
 
-                const statusEl = document.getElementById('system-status');
-                const card = document.getElementById('status-card');
+                const badge = document.getElementById('status-badge');
                 if (a.fired) {
-                    statusEl.textContent = 'NET DEPLOYED';
-                    statusEl.className = 'value fired';
-                    card.className = 'card active';
+                    badge.textContent = 'NET DEPLOYED';
+                    badge.className = 'status-badge badge-fired';
                 } else if (a.armed) {
-                    statusEl.textContent = 'ARMED';
-                    statusEl.className = 'value armed';
-                    card.className = 'card active';
+                    badge.textContent = 'ARMED';
+                    badge.className = 'status-badge badge-armed';
                 } else {
-                    statusEl.textContent = 'MONITORING';
-                    statusEl.className = 'value';
-                    card.className = 'card';
+                    badge.textContent = 'MONITORING';
+                    badge.className = 'status-badge badge-monitoring';
                 }
             }).catch(() => {});
         }

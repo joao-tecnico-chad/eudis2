@@ -152,38 +152,19 @@ class DroneGuardian:
             # Draw centroid
             cv2.circle(annotated, (int(cx), int(cy)), 4, color, -1)
 
-        # Top-left: FPS and altitude
-        cv2.putText(annotated, f"FPS: {fps:.1f}", (10, 25),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_HUD, 2)
-        cv2.putText(annotated, f"ALT: {altitude_delta:.1f}m", (10, 50),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_HUD, 2)
-        cv2.putText(annotated, f"Drones: {len(detections)}", (10, 75),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, COLOR_HUD, 2)
-
-        # Top-right: Layer status
-        layer_x = fw - 180
-        layers = [
-            ("L1 ALT", state.layer1_altitude),
-            ("L2 ZONE", state.layer2_centroid),
-            ("L3 SIZE", state.layer3_size),
-            (f"L4 {state.layer4_count}/{self.config.consecutive_frames}", state.layer4_count > 0),
+        # Bottom-left: compact status bar
+        bar_y = fh - 12
+        status_items = [
+            f"FPS:{fps:.0f}",
+            f"ALT:{altitude_delta:.0f}m",
+            f"L4:{state.layer4_count}/{self.config.consecutive_frames}",
         ]
-        for i, (name, active) in enumerate(layers):
-            color = (0, 255, 0) if active else (0, 0, 180)
-            cv2.putText(annotated, name, (layer_x, 25 + i * 22),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
-
-        # Bottom center: System status
         if state.fired:
-            status, color = "NET DEPLOYED", COLOR_FIRED
+            status_items.append("FIRED")
         elif state.armed:
-            status, color = "ARMED", COLOR_ARMED
-        else:
-            status, color = "MONITORING", COLOR_HUD
-
-        text_size = cv2.getTextSize(status, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0]
-        tx = (fw - text_size[0]) // 2
-        cv2.putText(annotated, status, (tx, fh - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, color, 2)
+            status_items.append("ARMED")
+        status_text = " | ".join(status_items)
+        cv2.putText(annotated, status_text, (8, bar_y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45, COLOR_HUD, 1)
 
         return annotated

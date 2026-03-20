@@ -18,6 +18,7 @@ class StubDetector(DetectorABC):
         self._cap = None
         self._session = None
         self._input_name = None
+        self._onnx_img_size: int | None = None
 
     def start(self) -> None:
         source = self._config.source
@@ -35,7 +36,10 @@ class StubDetector(DetectorABC):
                                          "CPUExecutionProvider"] if p in providers]
                 self._session = ort.InferenceSession(str(onnx_path), providers=preferred)
                 self._input_name = self._session.get_inputs()[0].name
-                print(f"Stub detector: ONNX model loaded ({preferred[0]})")
+                # Read expected input size from model (e.g., 640 for YOLOv8)
+                input_shape = self._session.get_inputs()[0].shape
+                self._onnx_img_size = input_shape[2] if len(input_shape) >= 3 else None
+                print(f"Stub detector: ONNX model loaded ({preferred[0]}, input={self._onnx_img_size}px)")
             except ImportError:
                 print("Stub detector: onnxruntime not installed, detections disabled")
         else:
@@ -53,7 +57,8 @@ class StubDetector(DetectorABC):
 
         detections = []
         if self._session is not None:
-            blob, scale = preprocess_frame(frame, self._config.img_size)
+            img_size = self._onnx_img_size or self._config.img_size
+            blob, scale = preprocess_frame(frame, img_size)
             output = self._session.run(None, {self._input_name: blob})[0]
             detections = decode_yolov8(
                 output, scale,
