@@ -140,8 +140,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 l4.className = 'layer-status ' + (a.layer4_count >= 5 ? 'layer-pass' : 'layer-fail');
 
                 const badge = document.getElementById('status-badge');
-                if (a.fired) {
-                    badge.textContent = 'NET DEPLOYED';
+                if (a.cooling_down) {
+                    badge.textContent = 'REARMING';
                     badge.className = 'status-badge badge-fired';
                 } else if (a.armed) {
                     badge.textContent = 'ARMED';

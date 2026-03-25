@@ -116,8 +116,8 @@ class TestLayer4Persistence:
         assert state.layer4_count == 0
 
 
-class TestFiring:
-    def test_mark_fired_prevents_rearm(self):
+class TestFiringCooldown:
+    def test_mark_fired_enters_cooldown(self):
         config = make_config(consecutive_frames=2)
         filt = ActivationFilter(config)
         det = make_detection(280, 200, 360, 280)
@@ -129,9 +129,29 @@ class TestFiring:
         filt.mark_fired()
         state = filt.update(10.0, [det], FW, FH)
         assert not state.armed
-        assert state.fired
+        assert state.cooling_down
 
-    def test_reset_allows_refire(self):
+    def test_mark_ready_allows_refire(self):
+        """After servo rearms, filter should allow firing again."""
+        config = make_config(consecutive_frames=2)
+        filt = ActivationFilter(config)
+        det = make_detection(280, 200, 360, 280)
+
+        # First fire cycle
+        filt.update(10.0, [det], FW, FH)
+        filt.update(10.0, [det], FW, FH)
+        filt.mark_fired()
+
+        # Servo rearms
+        filt.mark_ready()
+
+        # Should be able to arm again
+        filt.update(10.0, [det], FW, FH)
+        state = filt.update(10.0, [det], FW, FH)
+        assert state.armed
+        assert not state.cooling_down
+
+    def test_reset_clears_cooldown(self):
         config = make_config(consecutive_frames=2)
         filt = ActivationFilter(config)
         det = make_detection(280, 200, 360, 280)
@@ -144,4 +164,4 @@ class TestFiring:
         filt.update(10.0, [det], FW, FH)
         state = filt.update(10.0, [det], FW, FH)
         assert state.armed
-        assert not state.fired
+        assert not state.cooling_down

@@ -78,6 +78,10 @@ class DroneGuardian:
 
         try:
             while True:
+                # Read altitude first — skip inference if not airborne
+                altitude_delta = self.barometer.get_altitude_delta_m()
+                is_airborne = altitude_delta > self.config.altitude_margin_m
+
                 frame, detections = self.detector.get_frame_and_detections()
                 if frame is None:
                     time.sleep(0.001)
@@ -87,18 +91,24 @@ class DroneGuardian:
                 if self._focal_length is None:
                     self._focal_length = estimate_focal_length(fw, self.config.camera_fov_deg)
 
-                # Read altitude
-                altitude_delta = self.barometer.get_altitude_delta_m()
+                # Only keep detections if airborne — save compute on ground
+                if not is_airborne:
+                    detections = []
+
+                # If servo finished rearming, clear cooldown
+                if not self.servo.is_ready:
+                    pass  # still cycling
+                elif self.activation._cooling_down:
+                    self.activation.mark_ready()
+                    print("*** REARMED — ready to fire again ***")
 
                 # Run activation filter
                 state = self.activation.update(altitude_delta, detections, fw, fh)
 
-                # Act on armed state
-                if state.armed and not state.fired:
-                    self.servo.arm()
+                # Fire when armed and servo is ready
+                if state.armed and self.servo.is_ready:
                     self.servo.fire()
                     self.activation.mark_fired()
-                    state.fired = True
                     print("*** NET DEPLOYED ***")
 
                 # Compute FPS
@@ -159,8 +169,8 @@ class DroneGuardian:
             f"ALT:{altitude_delta:.0f}m",
             f"L4:{state.layer4_count}/{self.config.consecutive_frames}",
         ]
-        if state.fired:
-            status_items.append("FIRED")
+        if state.cooling_down:
+            status_items.append("REARMING")
         elif state.armed:
             status_items.append("ARMED")
         status_text = " | ".join(status_items)

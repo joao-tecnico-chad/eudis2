@@ -5,13 +5,14 @@ from abc import ABC, abstractmethod
 
 class ServoABC(ABC):
     @abstractmethod
-    def arm(self) -> None:
-        """Move servo to armed position (ready to fire)."""
-
-    @abstractmethod
     def fire(self) -> None:
-        """Release the net launcher."""
+        """Full fire cycle: rotate 90 deg, wait 1s, rotate back 90 deg (rearm)."""
 
     @abstractmethod
     def safe(self) -> None:
         """Move servo to safe/stowed position."""
+
+    @property
+    @abstractmethod
+    def is_ready(self) -> bool:
+        """True if servo has completed rearm and is ready to fire again."""

@@ -20,7 +20,7 @@ class ActivationState:
     layer3_size: bool = False
     layer4_count: int = 0
     armed: bool = False
-    fired: bool = False
+    cooling_down: bool = False
 
     @property
     def all_layers_passing(self) -> bool:
@@ -32,6 +32,7 @@ class ActivationFilter:
 
     Call update() once per frame with current sensor data and detections.
     The filter tracks consecutive passing frames and signals when to fire.
+    After firing, enter cooldown until the servo signals ready (mark_ready).
     """
 
     def __init__(self, config: GuardianConfig):
@@ -40,33 +41,28 @@ class ActivationFilter:
         self._min_area_ratio = config.min_box_area_ratio
         self._required_frames = config.consecutive_frames
         self._consecutive = 0
-        self._fired = False
+        self._cooling_down = False
 
     def reset(self) -> None:
-        """Reset filter state (e.g., after reloading net)."""
+        """Reset filter state."""
         self._consecutive = 0
-        self._fired = False
+        self._cooling_down = False
 
     def update(self, altitude_delta_m: float, detections: list[Detection],
                frame_w: int, frame_h: int) -> ActivationState:
-        """Process one frame through all 4 activation layers.
-
-        Args:
-            altitude_delta_m: Current altitude minus reference altitude (meters).
-            detections: List of Detection objects from the current frame.
-            frame_w: Frame width in pixels.
-            frame_h: Frame height in pixels.
-
-        Returns:
-            ActivationState with per-layer status and armed/fired flags.
-        """
         state = ActivationState()
 
         # Layer 1: Altitude gate (master safety)
         state.layer1_altitude = altitude_delta_m > self._altitude_margin
         if not state.layer1_altitude:
             self._consecutive = 0
-            state.fired = self._fired
+            state.cooling_down = self._cooling_down
+            return state
+
+        # If servo is still cycling, don't accumulate frames
+        if self._cooling_down:
+            self._consecutive = 0
+            state.cooling_down = True
             return state
 
         # Layer 2 & 3: Check each detection for zone and size
@@ -80,7 +76,6 @@ class ActivationFilter:
             if area > self._min_area_ratio:
                 state.layer3_size = True
 
-            # Both must be true for the SAME detection to really confirm approach
             if in_zone and area > self._min_area_ratio:
                 break
 
@@ -92,14 +87,17 @@ class ActivationFilter:
 
         state.layer4_count = self._consecutive
 
-        # Armed when persistence threshold met
-        if self._consecutive >= self._required_frames and not self._fired:
+        if self._consecutive >= self._required_frames:
             state.armed = True
 
-        state.fired = self._fired
         return state
 
     def mark_fired(self) -> None:
-        """Mark that the net has been deployed. Prevents re-firing."""
-        self._fired = True
+        """Enter cooldown while servo completes fire-rearm cycle."""
+        self._cooling_down = True
+        self._consecutive = 0
+
+    def mark_ready(self) -> None:
+        """Servo has rearmed — allow activation again."""
+        self._cooling_down = False
         self._consecutive = 0
