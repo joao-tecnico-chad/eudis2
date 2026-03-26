@@ -21,6 +21,7 @@ parser.add_argument("--blob", default="models/best_yolov6n_openvino_2022.1_6shav
 parser.add_argument("--conf", type=float, default=0.3, help="Confidence threshold")
 parser.add_argument("--iou", type=float, default=0.5, help="NMS IoU threshold")
 parser.add_argument("--img-size", type=int, default=640)
+parser.add_argument("--hold", type=float, default=3.0, help="Seconds of continuous detection before confirming drone")
 args = parser.parse_args()
 
 BLOB_PATH = str(Path(args.blob).resolve())
@@ -30,8 +31,10 @@ IOU_THRESH = args.iou
 NUM_CLASSES = 1
 LABELS = ["drone"]
 
+HOLD_SEC = args.hold
+
 print(f"Blob:  {BLOB_PATH}")
-print(f"Input: {IMG_SIZE}x{IMG_SIZE}  conf>{CONF_THRESH}  iou>{IOU_THRESH}")
+print(f"Input: {IMG_SIZE}x{IMG_SIZE}  conf>{CONF_THRESH}  iou>{IOU_THRESH}  hold>{HOLD_SEC}s")
 
 with dai.Pipeline() as pipeline:
     cam = pipeline.create(dai.node.Camera).build()
@@ -39,7 +42,7 @@ with dai.Pipeline() as pipeline:
 
     nn = pipeline.create(dai.node.NeuralNetwork)
     nn.setBlobPath(BLOB_PATH)
-    nn.setNumInferenceThreads(1)
+    nn.setNumInferenceThreads(2)
     nn.input.setBlocking(True)
     cam_out.link(nn.input)
 
@@ -52,6 +55,14 @@ with dai.Pipeline() as pipeline:
     frame_count = 0
     last_status = ""
 
+    # Tracking state — follow a single detection spatially
+    track_cx, track_cy = 0.0, 0.0  # tracked centroid (pixels)
+    detect_start = None   # when continuous tracking began
+    last_detect = None    # last time tracked target was seen
+    confirmed = False
+    GAP_TOLERANCE = 0.5   # seconds without match before resetting
+    MATCH_DIST = IMG_SIZE * 0.25  # max pixel distance to count as same target
+
     try:
         while pipeline.isRunning():
             in_nn = q_nn.tryGet()
@@ -63,31 +74,79 @@ with dai.Pipeline() as pipeline:
             detections = decode_yolov6(output, IMG_SIZE, NUM_CLASSES, CONF_THRESH, IOU_THRESH)
 
             frame_count += 1
-            elapsed = time.time() - fps_time
+            now = time.time()
+            elapsed = now - fps_time
 
             if detections:
-                best = max(detections, key=lambda d: d.confidence)
-                w = best.x2 - best.x1
-                h = best.y2 - best.y1
-                status = (
-                    f"\r DRONE DETECTED  "
-                    f"n={len(detections)}  "
-                    f"best={best.confidence:.0%}  "
-                    f"box={w}x{h}px"
-                )
+                # Find the detection closest to tracked position (or best if no track)
+                if detect_start is not None:
+                    # Match nearest to tracked centroid
+                    def dist_to_track(d):
+                        cx = (d.x1 + d.x2) / 2.0
+                        cy = (d.y1 + d.y2) / 2.0
+                        return ((cx - track_cx)**2 + (cy - track_cy)**2) ** 0.5
+                    nearest = min(detections, key=dist_to_track)
+                    if dist_to_track(nearest) < MATCH_DIST:
+                        best = nearest
+                    else:
+                        # Nothing near the tracked target — treat as no match
+                        best = None
+                else:
+                    # No active track — pick highest confidence to start
+                    best = max(detections, key=lambda d: d.confidence)
+
+                if best is not None:
+                    # Update tracked centroid
+                    track_cx = (best.x1 + best.x2) / 2.0
+                    track_cy = (best.y1 + best.y2) / 2.0
+                    if detect_start is None:
+                        detect_start = now
+                    last_detect = now
+                    hold_time = now - detect_start
+                    w = best.x2 - best.x1
+                    h = best.y2 - best.y1
+
+                    if hold_time >= HOLD_SEC:
+                        if not confirmed:
+                            confirmed = True
+                            print()
+                        status = (
+                            f"\r>>> DRONE CONFIRMED  "
+                            f"best={best.confidence:.0%}  "
+                            f"box={w}x{h}px  "
+                            f"pos=({int(track_cx)},{int(track_cy)})  "
+                            f"hold={hold_time:.0f}s"
+                        )
+                    else:
+                        status = (
+                            f"\r  ? tracking...  "
+                            f"{hold_time:.1f}/{HOLD_SEC:.0f}s  "
+                            f"best={best.confidence:.0%}  "
+                            f"pos=({int(track_cx)},{int(track_cy)})"
+                        )
+                else:
+                    status = f"\r  noise ({len(detections)} far from track)"
             else:
                 status = "\r  no drone       "
+
+            # Reset track if gap exceeded
+            if last_detect is not None and (now - last_detect) > GAP_TOLERANCE:
+                if confirmed:
+                    print(f"\r  drone lost                                       ")
+                detect_start = None
+                last_detect = None
+                confirmed = False
 
             # Update FPS every 2 seconds
             if elapsed >= 2.0:
                 fps = frame_count / elapsed
                 frame_count = 0
-                fps_time = time.time()
+                fps_time = now
                 status += f"  [{fps:.1f} fps]"
 
             # Overwrite line in-place
-            padded = status.ljust(60)
-            if detections or padded != last_status:
+            padded = status.ljust(70)
+            if padded != last_status:
                 print(padded, end="", flush=True)
                 last_status = padded
 
