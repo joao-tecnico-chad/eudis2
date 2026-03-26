@@ -28,6 +28,8 @@ def main():
                         help="Model architecture format")
     parser.add_argument("--img-size", type=int, default=416,
                         help="Model input size")
+    parser.add_argument("--detect-only", action="store_true",
+                        help="Detection + streaming only, no barometer/servo")
     args = parser.parse_args()
 
     config = GuardianConfig(
@@ -42,7 +44,7 @@ def main():
         img_size=args.img_size,
     )
 
-    guardian = DroneGuardian(config)
+    guardian = DroneGuardian(config, detect_only=args.detect_only)
     guardian.run()
 
 

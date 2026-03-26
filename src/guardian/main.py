@@ -12,11 +12,12 @@ from guardian.utils.decode import Detection
 
 
 class DroneGuardian:
-    def __init__(self, config: GuardianConfig):
+    def __init__(self, config: GuardianConfig, detect_only: bool = False):
         self.config = config
+        self.detect_only = detect_only
         self.detector = self._create_detector()
-        self.barometer = self._create_barometer()
-        self.servo = self._create_servo()
+        self.barometer = None if detect_only else self._create_barometer()
+        self.servo = None if detect_only else self._create_servo()
         self.activation = ActivationFilter(config)
         self.stream_server = StreamServer(config)
 
@@ -46,13 +47,16 @@ class DroneGuardian:
 
     def run(self) -> None:
         print("=== Drone Guardian starting ===")
-        print(f"Hardware mode: {'Pi' if self.config.is_pi() else 'Desktop'}")
-        print(f"Activation: altitude>{self.config.altitude_margin_m}m, "
-              f"zone={self.config.centroid_zone_ratio*100:.0f}%, "
-              f"area>{self.config.min_box_area_ratio*100:.1f}%, "
-              f"frames={self.config.consecutive_frames}")
+        mode = "detect-only" if self.detect_only else ("Pi" if self.config.is_pi() else "Desktop")
+        print(f"Mode: {mode}")
+        if not self.detect_only:
+            print(f"Activation: altitude>{self.config.altitude_margin_m}m, "
+                  f"zone={self.config.centroid_zone_ratio*100:.0f}%, "
+                  f"area>{self.config.min_box_area_ratio*100:.1f}%, "
+                  f"frames={self.config.consecutive_frames}")
 
-        self.barometer.set_reference()
+        if self.barometer:
+            self.barometer.set_reference()
         self.detector.start()
         self.stream_server.start()
 
@@ -62,19 +66,19 @@ class DroneGuardian:
 
         try:
             while True:
-                altitude_delta = self.barometer.get_altitude_delta_m()
-                is_airborne = altitude_delta > self.config.altitude_margin_m
+                altitude_delta = 0.0
+                if self.barometer:
+                    altitude_delta = self.barometer.get_altitude_delta_m()
+                is_airborne = self.detect_only or altitude_delta > self.config.altitude_margin_m
 
                 _, detections = self.detector.get_frame_and_detections()
 
-                # On Pi, push hardware-encoded MJPEG (zero CPU cost)
-                # On desktop, push_frame does CPU encoding (fallback)
+                # Push video stream
                 if is_pi:
                     jpeg = self.detector.get_jpeg()
                     if jpeg:
                         self.stream_server.push_jpeg(jpeg)
                 else:
-                    # Desktop stub returns frames, need CPU encode
                     frame, _ = self.detector.get_frame_and_detections()
                     if frame is not None:
                         self.stream_server.push_frame(frame)
@@ -87,7 +91,7 @@ class DroneGuardian:
                     detections = []
 
                 # Servo rearm check
-                if self.servo.is_ready and self.activation._cooling_down:
+                if self.servo and self.servo.is_ready and self.activation._cooling_down:
                     self.activation.mark_ready()
                     print("*** REARMED — ready to fire again ***")
 
@@ -96,7 +100,7 @@ class DroneGuardian:
                 state = self.activation.update(altitude_delta, detections, img, img)
 
                 # Fire
-                if state.armed and self.servo.is_ready:
+                if not self.detect_only and state.armed and self.servo and self.servo.is_ready:
                     self.servo.fire()
                     self.activation.mark_fired()
                     print("*** NET DEPLOYED ***")
@@ -108,7 +112,6 @@ class DroneGuardian:
                     fps = 1.0 / dt
                 prev_time = now
 
-                # Push telemetry (detections as JSON for browser-side box rendering)
                 self.stream_server.push_telemetry(
                     altitude_delta, detections, state, fps
                 )
@@ -117,6 +120,7 @@ class DroneGuardian:
             print("\nShutdown requested")
         finally:
             self.detector.stop()
-            self.servo.safe()
+            if self.servo:
+                self.servo.safe()
             self.stream_server.stop()
             print("=== Drone Guardian stopped ===")
