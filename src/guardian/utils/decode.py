@@ -41,26 +41,25 @@ def decode_yolov6(output: np.ndarray, img_size: int, num_classes: int,
                   conf_thresh: float, iou_thresh: float) -> list[Detection]:
     """Decode raw YOLOv6 network output.
 
-    Input shape: [1, num_anchors, 5+num_classes] or flat equivalent.
-    Coordinates are normalized (0-1) relative to img_size.
+    Input shape: [num_anchors, 4+1+num_classes] = [cx, cy, w, h, obj, cls...].
+    Coordinates are in pixel space (already scaled to img_size).
+    Final confidence = obj * class_score (though obj is often 1.0).
     """
-    output = output.reshape(-1, 5 + num_classes)
+    output = output.reshape(-1, 4 + 1 + num_classes)
     detections = []
 
     for det in output:
         obj_conf = float(det[4])
-        if obj_conf < conf_thresh:
-            continue
         class_scores = det[5:]
         cls_id = int(np.argmax(class_scores))
         confidence = obj_conf * float(class_scores[cls_id])
         if confidence < conf_thresh:
             continue
         cx, cy, w, h = det[:4]
-        x1 = int((cx - w / 2) * img_size)
-        y1 = int((cy - h / 2) * img_size)
-        x2 = int((cx + w / 2) * img_size)
-        y2 = int((cy + h / 2) * img_size)
+        x1 = int(cx - w / 2)
+        y1 = int(cy - h / 2)
+        x2 = int(cx + w / 2)
+        y2 = int(cy + h / 2)
         detections.append(Detection(x1, y1, x2, y2, confidence, cls_id))
 
     # Apply NMS
