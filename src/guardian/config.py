@@ -9,8 +9,8 @@ class GuardianConfig:
     # --- Detection ---
     blob_path: str = "models/drone_yolov8n.blob"
     onnx_path: str = "models/best_new.onnx"
-    img_size: int = 416
-    conf_threshold: float = 0.3
+    img_size: int = 640
+    conf_threshold: float = 0.5
     iou_threshold: float = 0.5
     max_box_ratio: float = 0.6
     model_format: str = "yolov6"  # "yolov6" or "yolov8"
