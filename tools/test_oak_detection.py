@@ -23,11 +23,11 @@ with dai.Pipeline() as pipeline:
 
     nn = pipeline.create(dai.node.NeuralNetwork)
     nn.setBlobPath(BLOB_PATH)
-    nn.setNumInferenceThreads(2)
-    nn.input.setBlocking(False)
+    nn.setNumInferenceThreads(1)
+    nn.input.setBlocking(True)
     cam_out.link(nn.input)
 
-    q_nn = nn.out.createOutputQueue(maxSize=1, blocking=False)
+    q_nn = nn.out.createOutputQueue(maxSize=1, blocking=True)
 
     pipeline.start()
     print("Running YOLOv6n detection — Ctrl+C to quit")
