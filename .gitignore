@@ -1,10 +1,13 @@
-# Model weights
+# Model weights (large files)
 models/*.pt
 models/*.onnx
-models/*.blob
 models/*.pth
 *.pth
+
+# Blobs — allow deployment blobs, ignore others
 *.blob
+!models/best_yolov6n_openvino_2022.1_6shave.blob
+!models/nuno_yolov8n.blob
 
 # macOS
 .DS_Store
