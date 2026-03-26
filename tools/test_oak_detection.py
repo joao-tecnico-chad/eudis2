@@ -62,6 +62,8 @@ with dai.Pipeline() as pipeline:
     confirmed = False
     GAP_TOLERANCE = 0.5   # seconds without match before resetting
     MATCH_DIST = IMG_SIZE * 0.25  # max pixel distance to count as same target
+    CONFIRM_CONF = CONF_THRESH * 1.5  # min confidence to maintain confirmed track
+    peak_conf = 0.0  # best confidence seen during this track
 
     try:
         while pipeline.isRunning():
@@ -96,34 +98,44 @@ with dai.Pipeline() as pipeline:
                     best = max(detections, key=lambda d: d.confidence)
 
                 if best is not None:
-                    # Update tracked centroid
-                    track_cx = (best.x1 + best.x2) / 2.0
-                    track_cy = (best.y1 + best.y2) / 2.0
-                    if detect_start is None:
-                        detect_start = now
-                    last_detect = now
-                    hold_time = now - detect_start
-                    w = best.x2 - best.x1
-                    h = best.y2 - best.y1
-
-                    if hold_time >= HOLD_SEC:
-                        if not confirmed:
-                            confirmed = True
-                            print()
-                        status = (
-                            f"\r>>> DRONE CONFIRMED  "
-                            f"best={best.confidence:.0%}  "
-                            f"box={w}x{h}px  "
-                            f"pos=({int(track_cx)},{int(track_cy)})  "
-                            f"hold={hold_time:.0f}s"
-                        )
+                    # If confidence dropped well below peak, drone likely gone
+                    if confirmed and peak_conf > 0 and best.confidence < peak_conf * 0.4:
+                        print(f"\r  drone lost (conf dropped {peak_conf:.0%} -> {best.confidence:.0%})")
+                        detect_start = None
+                        last_detect = None
+                        confirmed = False
+                        peak_conf = 0.0
+                        status = "\r  no drone       "
                     else:
-                        status = (
-                            f"\r  ? tracking...  "
-                            f"{hold_time:.1f}/{HOLD_SEC:.0f}s  "
-                            f"best={best.confidence:.0%}  "
-                            f"pos=({int(track_cx)},{int(track_cy)})"
-                        )
+                        # Update tracked centroid
+                        track_cx = (best.x1 + best.x2) / 2.0
+                        track_cy = (best.y1 + best.y2) / 2.0
+                        if detect_start is None:
+                            detect_start = now
+                        last_detect = now
+                        peak_conf = max(peak_conf, best.confidence)
+                        hold_time = now - detect_start
+                        w = best.x2 - best.x1
+                        h = best.y2 - best.y1
+
+                        if hold_time >= HOLD_SEC:
+                            if not confirmed:
+                                confirmed = True
+                                print()
+                            status = (
+                                f"\r>>> DRONE CONFIRMED  "
+                                f"best={best.confidence:.0%}  "
+                                f"box={w}x{h}px  "
+                                f"pos=({int(track_cx)},{int(track_cy)})  "
+                                f"hold={hold_time:.0f}s"
+                            )
+                        else:
+                            status = (
+                                f"\r  ? tracking...  "
+                                f"{hold_time:.1f}/{HOLD_SEC:.0f}s  "
+                                f"best={best.confidence:.0%}  "
+                                f"pos=({int(track_cx)},{int(track_cy)})"
+                            )
                 else:
                     status = f"\r  noise ({len(detections)} far from track)"
             else:
@@ -136,6 +148,7 @@ with dai.Pipeline() as pipeline:
                 detect_start = None
                 last_detect = None
                 confirmed = False
+                peak_conf = 0.0
 
             # Update FPS every 2 seconds
             if elapsed >= 2.0:
