@@ -71,14 +71,24 @@ def decode_yolov6(output: np.ndarray, img_size: int, num_classes: int,
     return [detections[i] for i in keep]
 
 
-def decode_yolov8(output: np.ndarray, scale: float,
-                  conf_thresh: float, iou_thresh: float) -> list[Detection]:
-    """Decode raw YOLOv8 ONNX output.
+def decode_yolov8(output: np.ndarray, scale: float = 1.0,
+                  conf_thresh: float = 0.3, iou_thresh: float = 0.5) -> list[Detection]:
+    """Decode raw YOLOv8 output (ONNX or OAK blob).
 
-    Input shape: [1, 5, 8400] for single-class = [cx, cy, w, h, score] transposed.
-    scale: the ratio used during preprocessing (IMG_SIZE / max(h, w)).
+    Handles both shapes:
+        [1, 5+, N]  — ONNX format, needs transpose
+        [1, N, 5+]  — some OAK blob conversions, already row-major
+
+    scale: preprocessing ratio (IMG_SIZE / max(h, w)). Use 1.0 for OAK
+           where camera outputs directly at model input size.
     """
-    preds = output[0].T  # [8400, 5+]
+    t = output[0]  # drop batch dim -> (A, B)
+    # Detect orientation: features dim is small (5-10), anchors dim is large (1000+)
+    # (5, 8400) -> transpose; (8400, 5) -> keep as-is
+    if t.shape[1] > t.shape[0]:
+        preds = t.T  # (5, 8400) -> (8400, 5)
+    else:
+        preds = t    # already (8400, 5) or similar
 
     if preds.shape[1] == 5:
         # Single class: [cx, cy, w, h, score]

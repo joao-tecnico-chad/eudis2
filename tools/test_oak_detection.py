@@ -1,8 +1,9 @@
-"""Live detection test on OAK-1W with YOLOv6n blob (depthai v3) — terminal only.
+"""Live detection on OAK-1W with terminal output and single-target tracking.
 
-Usage (on Pi Zero):
+Usage:
     python tools/test_oak_detection.py
-    python tools/test_oak_detection.py --conf 0.3
+    python tools/test_oak_detection.py --model-format yolov8 --conf 0.5
+    python tools/test_oak_detection.py --blob models/custom.blob --conf 0.4
 """
 
 import argparse
@@ -14,28 +15,67 @@ import depthai as dai
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
-from guardian.utils.decode import decode_yolov6
+from guardian.utils.decode import decode_yolov6, decode_yolov8
+from guardian.utils.tracker import DetectionTracker
 
-parser = argparse.ArgumentParser(description="OAK-1W YOLOv6n live detection")
-parser.add_argument("--blob", default="models/best_yolov6n_openvino_2022.1_6shave.blob")
+DEFAULT_BLOBS = {
+    "yolov6": "models/best_yolov6n_openvino_2022.1_6shave.blob",
+    "yolov8": "models/nuno_yolov8n.blob",
+}
+
+parser = argparse.ArgumentParser(description="OAK-1W live drone detection")
+parser.add_argument("--model-format", choices=["yolov6", "yolov8"], default="yolov6")
+parser.add_argument("--blob", default=None, help="Path to .blob (auto-selects from model-format)")
 parser.add_argument("--conf", type=float, default=0.3, help="Confidence threshold")
 parser.add_argument("--iou", type=float, default=0.5, help="NMS IoU threshold")
 parser.add_argument("--img-size", type=int, default=640)
-parser.add_argument("--hold", type=float, default=3.0, help="Seconds of continuous detection before confirming drone")
+parser.add_argument("--hold", type=float, default=3.0, help="Seconds to confirm drone")
+parser.add_argument("--max-box-ratio", type=float, default=0.6, help="Max box size as fraction of frame")
 args = parser.parse_args()
 
-BLOB_PATH = str(Path(args.blob).resolve())
+BLOB_PATH = str(Path(args.blob or DEFAULT_BLOBS[args.model_format]).resolve())
 IMG_SIZE = args.img_size
-CONF_THRESH = args.conf
-IOU_THRESH = args.iou
+CONF = args.conf
+IOU = args.iou
 NUM_CLASSES = 1
-LABELS = ["drone"]
 
-HOLD_SEC = args.hold
+print(f"Model:  {args.model_format}")
+print(f"Blob:   {BLOB_PATH}")
+print(f"Input:  {IMG_SIZE}x{IMG_SIZE}  conf>{CONF}  iou>{IOU}  hold>{args.hold}s")
 
-print(f"Blob:  {BLOB_PATH}")
-print(f"Input: {IMG_SIZE}x{IMG_SIZE}  conf>{CONF_THRESH}  iou>{IOU_THRESH}  hold>{HOLD_SEC}s")
 
+def decode(raw: np.ndarray) -> list:
+    if args.model_format == "yolov8":
+        return decode_yolov8(raw, scale=1.0, conf_thresh=CONF, iou_thresh=IOU)
+    return decode_yolov6(raw, IMG_SIZE, NUM_CLASSES, CONF, IOU)
+
+
+def format_status(state, fps_str: str) -> str:
+    if state.lost_reason:
+        return f"\r  drone lost ({state.lost_reason})"
+    if state.confirmed:
+        d = state.best_det
+        w, h = d.x2 - d.x1, d.y2 - d.y1
+        return (
+            f"\r{fps_str}>>> DRONE  "
+            f"hold={state.hold_time:.0f}s  "
+            f"conf={d.confidence:.0%}  "
+            f"ema={state.ema_conf:.0%}  "
+            f"box={w}x{h}  "
+            f"pos=({int(state.cx)},{int(state.cy)})"
+        )
+    if state.tracking:
+        return (
+            f"\r{fps_str}? tracking "
+            f"{state.hold_time:.1f}/{args.hold:.0f}s  "
+            f"conf={state.best_det.confidence:.0%}  "
+            f"ema={state.ema_conf:.0%}  "
+            f"pos=({int(state.cx)},{int(state.cy)})"
+        )
+    return f"\r{fps_str}  no drone"
+
+
+# --- Pipeline setup ---
 with dai.Pipeline() as pipeline:
     cam = pipeline.create(dai.node.Camera).build()
     cam_out = cam.requestOutput((IMG_SIZE, IMG_SIZE), type=dai.ImgFrame.Type.BGR888p)
@@ -51,19 +91,16 @@ with dai.Pipeline() as pipeline:
     pipeline.start()
     print("Running — Ctrl+C to quit\n")
 
+    tracker = DetectionTracker(
+        img_size=IMG_SIZE,
+        hold_sec=args.hold,
+        max_box_ratio=args.max_box_ratio,
+    )
+
     fps_time = time.time()
     frame_count = 0
-    last_status = ""
-
-    # Tracking state — follow a single detection spatially
-    track_cx, track_cy = 0.0, 0.0  # tracked centroid (pixels)
-    detect_start = None   # when continuous tracking began
-    last_detect = None    # last time tracked target was seen
-    confirmed = False
-    GAP_TOLERANCE = 0.5   # seconds without match before resetting
-    MATCH_DIST = IMG_SIZE * 0.25  # max pixel distance to count as same target
-    CONFIRM_CONF = CONF_THRESH * 1.5  # min confidence to maintain confirmed track
-    peak_conf = 0.0  # best confidence seen during this track
+    fps_str = ""
+    last_line = ""
 
     try:
         while pipeline.isRunning():
@@ -72,96 +109,25 @@ with dai.Pipeline() as pipeline:
                 time.sleep(0.001)
                 continue
 
-            output = np.array(in_nn.getFirstTensor()).reshape(-1, 6)
-            detections = decode_yolov6(output, IMG_SIZE, NUM_CLASSES, CONF_THRESH, IOU_THRESH)
+            raw = np.array(in_nn.getFirstTensor())
+            detections = decode(raw)
+            state = tracker.update(detections, time.time())
 
             frame_count += 1
-            now = time.time()
-            elapsed = now - fps_time
-
-            if detections:
-                # Find the detection closest to tracked position (or best if no track)
-                if detect_start is not None:
-                    # Match nearest to tracked centroid
-                    def dist_to_track(d):
-                        cx = (d.x1 + d.x2) / 2.0
-                        cy = (d.y1 + d.y2) / 2.0
-                        return ((cx - track_cx)**2 + (cy - track_cy)**2) ** 0.5
-                    nearest = min(detections, key=dist_to_track)
-                    if dist_to_track(nearest) < MATCH_DIST:
-                        best = nearest
-                    else:
-                        # Nothing near the tracked target — treat as no match
-                        best = None
-                else:
-                    # No active track — pick highest confidence to start
-                    best = max(detections, key=lambda d: d.confidence)
-
-                if best is not None:
-                    # If confidence dropped well below peak, drone likely gone
-                    if confirmed and peak_conf > 0 and best.confidence < peak_conf * 0.4:
-                        print(f"\r  drone lost (conf dropped {peak_conf:.0%} -> {best.confidence:.0%})")
-                        detect_start = None
-                        last_detect = None
-                        confirmed = False
-                        peak_conf = 0.0
-                        status = "\r  no drone       "
-                    else:
-                        # Update tracked centroid
-                        track_cx = (best.x1 + best.x2) / 2.0
-                        track_cy = (best.y1 + best.y2) / 2.0
-                        if detect_start is None:
-                            detect_start = now
-                        last_detect = now
-                        peak_conf = max(peak_conf, best.confidence)
-                        hold_time = now - detect_start
-                        w = best.x2 - best.x1
-                        h = best.y2 - best.y1
-
-                        if hold_time >= HOLD_SEC:
-                            if not confirmed:
-                                confirmed = True
-                                print()
-                            status = (
-                                f"\r>>> DRONE CONFIRMED  "
-                                f"best={best.confidence:.0%}  "
-                                f"box={w}x{h}px  "
-                                f"pos=({int(track_cx)},{int(track_cy)})  "
-                                f"hold={hold_time:.0f}s"
-                            )
-                        else:
-                            status = (
-                                f"\r  ? tracking...  "
-                                f"{hold_time:.1f}/{HOLD_SEC:.0f}s  "
-                                f"best={best.confidence:.0%}  "
-                                f"pos=({int(track_cx)},{int(track_cy)})"
-                            )
-                else:
-                    status = f"\r  noise ({len(detections)} far from track)"
-            else:
-                status = "\r  no drone       "
-
-            # Reset track if gap exceeded
-            if last_detect is not None and (now - last_detect) > GAP_TOLERANCE:
-                if confirmed:
-                    print(f"\r  drone lost                                       ")
-                detect_start = None
-                last_detect = None
-                confirmed = False
-                peak_conf = 0.0
-
-            # Update FPS every 2 seconds
+            elapsed = time.time() - fps_time
             if elapsed >= 2.0:
-                fps = frame_count / elapsed
+                fps_str = f"[{frame_count / elapsed:.1f} fps]  "
                 frame_count = 0
-                fps_time = now
-                status += f"  [{fps:.1f} fps]"
+                fps_time = time.time()
 
-            # Overwrite line in-place
-            padded = status.ljust(70)
-            if padded != last_status:
-                print(padded, end="", flush=True)
-                last_status = padded
+            line = format_status(state, fps_str).ljust(80)
+
+            if state.lost_reason:
+                print(line)
+                last_line = ""
+            elif line != last_line:
+                print(line, end="", flush=True)
+                last_line = line
 
     except KeyboardInterrupt:
         print()

@@ -59,16 +59,14 @@ class TestDecodeYOLOv6:
 class TestDecodeYOLOv8:
     def test_basic_decode(self):
         # YOLOv8 output: [1, 5, N] where rows are [cx, cy, w, h, score]
-        # Single detection at center, 100px wide
-        output = np.zeros((1, 5, 3), dtype=np.float32)
+        # Use realistic anchor count so shape auto-detection works
+        n_anchors = 100
+        output = np.zeros((1, 5, n_anchors), dtype=np.float32)
         output[0, 0, 0] = 320  # cx
         output[0, 1, 0] = 240  # cy
         output[0, 2, 0] = 100  # w
         output[0, 3, 0] = 80   # h
         output[0, 4, 0] = 0.9  # score
-        # Two low-confidence detections
-        output[0, 4, 1] = 0.1
-        output[0, 4, 2] = 0.1
 
         dets = decode_yolov8(output, scale=1.0, conf_thresh=0.3, iou_thresh=0.5)
         assert len(dets) == 1
@@ -79,7 +77,8 @@ class TestDecodeYOLOv8:
         assert d.y2 == 280  # 240 + 40
 
     def test_scale_applied(self):
-        output = np.zeros((1, 5, 1), dtype=np.float32)
+        n_anchors = 100
+        output = np.zeros((1, 5, n_anchors), dtype=np.float32)
         output[0, 0, 0] = 320
         output[0, 1, 0] = 240
         output[0, 2, 0] = 100
@@ -92,3 +91,19 @@ class TestDecodeYOLOv8:
         # Coordinates divided by scale
         assert d.x1 == 540  # (320-50)/0.5
         assert d.x2 == 740  # (320+50)/0.5
+
+    def test_row_major_format(self):
+        # Test (1, N, 5) format — OAK blob may output this
+        n_anchors = 100
+        output = np.zeros((1, n_anchors, 5), dtype=np.float32)
+        output[0, 0, 0] = 320  # cx
+        output[0, 0, 1] = 240  # cy
+        output[0, 0, 2] = 100  # w
+        output[0, 0, 3] = 80   # h
+        output[0, 0, 4] = 0.9  # score
+
+        dets = decode_yolov8(output, scale=1.0, conf_thresh=0.3, iou_thresh=0.5)
+        assert len(dets) == 1
+        d = dets[0]
+        assert d.x1 == 270
+        assert d.y1 == 200

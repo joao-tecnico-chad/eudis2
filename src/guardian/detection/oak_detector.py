@@ -6,7 +6,7 @@ import numpy as np
 
 from guardian.config import GuardianConfig
 from guardian.detection.base import DetectorABC
-from guardian.utils.decode import Detection, decode_yolov6
+from guardian.utils.decode import Detection, decode_yolov6, decode_yolov8
 
 
 class OakDetector(DetectorABC):
@@ -33,7 +33,7 @@ class OakDetector(DetectorABC):
         nn = pipeline.create(dai.node.NeuralNetwork)
         nn.setBlobPath(str(blob_path))
         nn.setNumInferenceThreads(2)
-        nn.input.setBlocking(False)
+        nn.input.setBlocking(True)
 
         xout_rgb = pipeline.create(dai.node.XLinkOut)
         xout_rgb.setStreamName("rgb")
@@ -64,17 +64,25 @@ class OakDetector(DetectorABC):
 
         output = np.array(in_nn.getFirstLayerFp16())
 
-        if self._config.model_format == "yolov6":
-            detections = decode_yolov6(
-                output, self._config.img_size, self._config.num_classes,
-                self._config.conf_threshold, self._config.iou_threshold
+        if self._config.model_format == "yolov8":
+            detections = decode_yolov8(
+                output, scale=1.0,
+                conf_thresh=self._config.conf_threshold,
+                iou_thresh=self._config.iou_threshold,
             )
         else:
-            # YOLOv8 blob decoding would go here when blob format is finalized
             detections = decode_yolov6(
                 output, self._config.img_size, self._config.num_classes,
-                self._config.conf_threshold, self._config.iou_threshold
+                self._config.conf_threshold, self._config.iou_threshold,
             )
+
+        # Filter oversized boxes (likely false positives)
+        fh, fw = frame.shape[:2]
+        detections = [
+            d for d in detections
+            if (d.x2 - d.x1) / fw <= self._config.max_box_ratio
+            and (d.y2 - d.y1) / fh <= self._config.max_box_ratio
+        ]
 
         return frame, detections
 
