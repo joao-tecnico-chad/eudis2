@@ -6,7 +6,7 @@ models/*.pth
 
 # Blobs — allow deployment blobs, ignore others
 *.blob
-!models/best_yolov6n_openvino_2022.1_6shave.blob
+!models/drone_yolov6n.blob
 !models/nuno_yolov8n.blob
 
 # macOS
@@ -39,6 +39,10 @@ datasets/
 # Output directories
 output/
 runs/
+
+# DepthAI cache
+.cache/
+.depthai_cached_models/
 
 # Environment
 .env

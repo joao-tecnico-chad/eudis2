@@ -15,8 +15,8 @@ def main():
     parser.add_argument("--source", default="0",
                         help="Video source for desktop mode: webcam index or file path")
     parser.add_argument("--blob", default="models/drone_yolov6n.blob",
-                        help="Path to .blob model for OAK-1 W")
-    parser.add_argument("--onnx", default="models/best_new.onnx",
+                        help="Path to .blob model for OAK-1W")
+    parser.add_argument("--onnx", default="models/drone_yolov6n.onnx",
                         help="Path to .onnx model for desktop testing")
     parser.add_argument("--conf", type=float, default=0.3,
                         help="Detection confidence threshold")

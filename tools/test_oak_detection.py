@@ -19,7 +19,7 @@ from guardian.utils.decode import decode_yolov6, decode_yolov8
 from guardian.utils.tracker import DetectionTracker
 
 DEFAULT_BLOBS = {
-    "yolov6": "models/best_yolov6n_openvino_2022.1_6shave.blob",
+    "yolov6": "models/drone_yolov6n.blob",
     "yolov8": "models/nuno_yolov8n.blob",
 }
 
@@ -28,7 +28,7 @@ parser.add_argument("--model-format", choices=["yolov6", "yolov8"], default="yol
 parser.add_argument("--blob", default=None, help="Path to .blob (auto-selects from model-format)")
 parser.add_argument("--conf", type=float, default=0.3, help="Confidence threshold")
 parser.add_argument("--iou", type=float, default=0.5, help="NMS IoU threshold")
-parser.add_argument("--img-size", type=int, default=640)
+parser.add_argument("--img-size", type=int, default=416)
 parser.add_argument("--hold", type=float, default=3.0, help="Seconds to confirm drone")
 parser.add_argument("--max-box-ratio", type=float, default=0.6, help="Max box size as fraction of frame")
 args = parser.parse_args()

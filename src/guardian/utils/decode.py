@@ -39,36 +39,40 @@ def nms(boxes: np.ndarray, scores: np.ndarray, iou_thresh: float) -> list[int]:
 
 def decode_yolov6(output: np.ndarray, img_size: int, num_classes: int,
                   conf_thresh: float, iou_thresh: float) -> list[Detection]:
-    """Decode raw YOLOv6 network output.
+    """Decode raw YOLOv6 network output (vectorized).
 
     Input shape: [num_anchors, 4+1+num_classes] = [cx, cy, w, h, obj, cls...].
     Coordinates are in pixel space (already scaled to img_size).
     Final confidence = obj * class_score (though obj is often 1.0).
     """
-    output = output.reshape(-1, 4 + 1 + num_classes)
-    detections = []
+    preds = output.reshape(-1, 4 + 1 + num_classes)
 
-    for det in output:
-        obj_conf = float(det[4])
-        class_scores = det[5:]
-        cls_id = int(np.argmax(class_scores))
-        confidence = obj_conf * float(class_scores[cls_id])
-        if confidence < conf_thresh:
-            continue
-        cx, cy, w, h = det[:4]
-        x1 = int(cx - w / 2)
-        y1 = int(cy - h / 2)
-        x2 = int(cx + w / 2)
-        y2 = int(cy + h / 2)
-        detections.append(Detection(x1, y1, x2, y2, confidence, cls_id))
+    obj = preds[:, 4]
+    cls_scores = preds[:, 5:]
+    cls_ids = cls_scores.argmax(axis=1)
+    confs = obj * cls_scores[np.arange(len(cls_scores)), cls_ids]
 
-    # Apply NMS
-    if len(detections) <= 1:
-        return detections
-    boxes = np.array([[d.x1, d.y1, d.x2, d.y2] for d in detections], dtype=np.float32)
-    scores = np.array([d.confidence for d in detections], dtype=np.float32)
-    keep = nms(boxes, scores, iou_thresh)
-    return [detections[i] for i in keep]
+    mask = confs >= conf_thresh
+    if not mask.any():
+        return []
+
+    preds = preds[mask]
+    confs = confs[mask]
+    cls_ids = cls_ids[mask]
+
+    cx, cy, w, h = preds[:, 0], preds[:, 1], preds[:, 2], preds[:, 3]
+    x1 = (cx - w / 2).astype(int)
+    y1 = (cy - h / 2).astype(int)
+    x2 = (cx + w / 2).astype(int)
+    y2 = (cy + h / 2).astype(int)
+    boxes = np.stack([x1, y1, x2, y2], axis=1).astype(np.float32)
+
+    keep = nms(boxes, confs, iou_thresh)
+    return [
+        Detection(int(boxes[i][0]), int(boxes[i][1]), int(boxes[i][2]), int(boxes[i][3]),
+                  float(confs[i]), int(cls_ids[i]))
+        for i in keep
+    ]
 
 
 def decode_yolov8(output: np.ndarray, scale: float = 1.0,
