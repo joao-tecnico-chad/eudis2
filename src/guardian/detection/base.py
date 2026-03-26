@@ -19,6 +19,10 @@ class DetectorABC(ABC):
         Returns (frame, detections) where frame may be None if not ready.
         """
 
+    def get_jpeg(self) -> bytes | None:
+        """Get hardware-encoded JPEG frame as bytes. Override for HW encoding."""
+        return None
+
     @abstractmethod
     def stop(self) -> None:
         """Release resources."""

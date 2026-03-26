@@ -1,9 +1,9 @@
-"""MJPEG + JSON telemetry HTTP server using stdlib.
+"""MJPEG + JSON telemetry HTTP server.
 
 Endpoints:
-    GET /           HTML dashboard with live video and telemetry
-    GET /stream     MJPEG multipart stream
-    GET /telemetry  JSON with current system state
+    GET /           HTML dashboard with live video and JS-drawn detection boxes
+    GET /stream     MJPEG multipart stream (from OAK hardware encoder or CPU fallback)
+    GET /telemetry  JSON with detections, activation state, and telemetry
 """
 
 import json
@@ -12,7 +12,6 @@ import time
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-import cv2
 import numpy as np
 
 from guardian.activation.filter import ActivationState
@@ -42,9 +41,11 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         .main { display: flex; height: calc(100vh - 50px); }
 
         .video-panel { flex: 1; min-width: 0; display: flex; align-items: center;
-                       justify-content: center; padding: 10px; background: #0a0a1a; }
+                       justify-content: center; padding: 10px; background: #0a0a1a;
+                       position: relative; }
         .video-panel img { max-width: 100%%; max-height: 100%%; object-fit: contain;
                            border: 1px solid #1a2332; border-radius: 3px; }
+        #overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
 
         .side-panel { width: 260px; min-width: 260px; background: #0d1117;
                       border-left: 1px solid #1a2332; padding: 12px; overflow-y: auto;
@@ -79,8 +80,9 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <span class="status-badge badge-monitoring" id="status-badge">MONITORING</span>
     </div>
     <div class="main">
-        <div class="video-panel">
+        <div class="video-panel" id="video-panel">
             <img id="stream" src="/stream" alt="Live Feed">
+            <canvas id="overlay"></canvas>
         </div>
         <div class="side-panel">
             <div class="stat-row">
@@ -119,12 +121,49 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
     </div>
     <script>
+        const img = document.getElementById('stream');
+        const canvas = document.getElementById('overlay');
+        const ctx = canvas.getContext('2d');
+
+        function drawBoxes(detections, nnSize) {
+            // Match canvas to the displayed image size and position
+            const rect = img.getBoundingClientRect();
+            canvas.style.left = rect.left + 'px';
+            canvas.style.top = rect.top + 'px';
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            if (!detections || !detections.length) return;
+
+            const sx = rect.width / nnSize[0];
+            const sy = rect.height / nnSize[1];
+
+            for (const d of detections) {
+                const x1 = d[0] * sx, y1 = d[1] * sy;
+                const x2 = d[2] * sx, y2 = d[3] * sy;
+                const conf = d[4];
+                const armed = d[5];
+
+                ctx.strokeStyle = armed ? '#ff0' : '#0f0';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+
+                ctx.fillStyle = armed ? '#ff0' : '#0f0';
+                ctx.font = '12px monospace';
+                ctx.fillText('drone ' + (conf * 100).toFixed(0) + '%%', x1, y1 - 4);
+            }
+        }
+
         function update() {
             fetch('/telemetry').then(r => r.json()).then(d => {
                 document.getElementById('altitude').textContent =
                     d.altitude_delta_m.toFixed(1) + 'm';
                 document.getElementById('detections').textContent = d.detection_count;
                 document.getElementById('fps').textContent = d.fps.toFixed(0);
+
+                // Draw detection boxes on canvas overlay
+                drawBoxes(d.detections, d.nn_size);
 
                 const a = d.activation;
                 const setLayer = (id, val) => {
@@ -152,7 +191,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 }
             }).catch(() => {});
         }
-        setInterval(update, 200);
+        setInterval(update, 100);
         update();
     </script>
 </body>
@@ -161,7 +200,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
 
 class FrameBuffer:
-    """Thread-safe buffer for sharing frames between producer and consumers."""
+    """Thread-safe buffer for sharing JPEG frames between producer and consumers."""
 
     def __init__(self):
         self._frame_bytes: bytes = b""
@@ -181,24 +220,31 @@ class FrameBuffer:
 class TelemetryStore:
     """Thread-safe store for current telemetry data."""
 
-    def __init__(self):
+    def __init__(self, config: GuardianConfig):
         self._lock = threading.Lock()
+        self._config = config
         self._data = {
             "altitude_delta_m": 0.0,
-            "altitude_margin_m": 5.0,
             "detection_count": 0,
+            "detections": [],
+            "nn_size": [config.img_size, config.img_size],
             "activation": asdict(ActivationState()),
             "fps": 0.0,
             "timestamp": 0.0,
         }
 
-    def update(self, altitude_delta_m: float, detection_count: int,
+    def update(self, altitude_delta_m: float, detections: list,
                activation: ActivationState, fps: float) -> None:
+        det_list = [
+            [d.x1, d.y1, d.x2, d.y2, d.confidence, activation.armed]
+            for d in detections
+        ]
         with self._lock:
             self._data = {
                 "altitude_delta_m": altitude_delta_m,
-                "altitude_margin_m": self._data["altitude_margin_m"],
-                "detection_count": detection_count,
+                "detection_count": len(detections),
+                "detections": det_list,
+                "nn_size": [self._config.img_size, self._config.img_size],
                 "activation": asdict(activation),
                 "fps": fps,
                 "timestamp": time.time(),
@@ -215,7 +261,7 @@ class StreamServer:
     def __init__(self, config: GuardianConfig):
         self._config = config
         self.frame_buffer = FrameBuffer()
-        self.telemetry = TelemetryStore()
+        self.telemetry = TelemetryStore(config)
         self._server = None
         self._thread = None
 
@@ -272,24 +318,29 @@ class StreamServer:
                 self.wfile.write(data)
 
             def log_message(self, format, *args):
-                pass  # Suppress request logs
+                pass
 
         self._server = ThreadingHTTPServer(
             (self._config.stream_host, self._config.stream_port), Handler
         )
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
-        print(f"Stream server started at http://{self._config.stream_host}:{self._config.stream_port}")
+        print(f"Stream: http://{self._config.stream_host}:{self._config.stream_port}")
+
+    def push_jpeg(self, jpeg_bytes: bytes) -> None:
+        """Push pre-encoded JPEG bytes (from OAK hardware encoder)."""
+        self.frame_buffer.push(jpeg_bytes)
 
     def push_frame(self, frame: np.ndarray) -> None:
-        """Encode frame as JPEG and push to buffer."""
+        """Encode frame as JPEG on CPU and push (fallback for desktop mode)."""
+        import cv2
         _, jpeg = cv2.imencode(".jpg", frame,
                                [cv2.IMWRITE_JPEG_QUALITY, self._config.jpeg_quality])
         self.frame_buffer.push(jpeg.tobytes())
 
-    def push_telemetry(self, altitude_delta_m: float, detection_count: int,
+    def push_telemetry(self, altitude_delta_m: float, detections: list,
                        activation: ActivationState, fps: float) -> None:
-        self.telemetry.update(altitude_delta_m, detection_count, activation, fps)
+        self.telemetry.update(altitude_delta_m, detections, activation, fps)
 
     def stop(self) -> None:
         if self._server is not None:
