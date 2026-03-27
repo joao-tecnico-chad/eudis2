@@ -63,10 +63,10 @@ class OakDetector(DetectorABC):
         print(f"OAK-1W started ({self._config.model_format}, "
               f"{self._config.img_size}x{self._config.img_size}, HW MJPEG)")
 
-    def get_frame_and_detections(self) -> tuple[np.ndarray | None, list[Detection]]:
+    def get_frame_and_detections(self) -> tuple[np.ndarray | None, list[Detection] | None]:
         in_nn = self._q_nn.tryGet()
         if in_nn is None:
-            return None, []
+            return None, None
 
         output = np.array(in_nn.getFirstTensor())
 
