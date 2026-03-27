@@ -38,20 +38,22 @@ class TestNMS:
 
 class TestDecodeYOLOv6:
     def test_basic_decode(self):
-        # Single detection: cx=208, cy=208, w=83, h=83, obj=0.9, cls0=0.95
+        # Single detection: cx=208, cy=208, w=83, h=83, obj=1.0, cls_logit=3.0
         # Coordinates in pixel space (as OAK blob outputs)
-        data = np.array([[208, 208, 83, 83, 0.9, 0.95]], dtype=np.float32)
+        # sigmoid(3.0) = 0.953 -> conf = 1.0 * 0.953 = 0.953
+        data = np.array([[208, 208, 83, 83, 1.0, 3.0]], dtype=np.float32)
         dets = decode_yolov6(data, img_size=416, num_classes=1, conf_thresh=0.3, iou_thresh=0.5)
         assert len(dets) == 1
         d = dets[0]
         assert d.class_id == 0
-        assert d.confidence > 0.8
+        assert d.confidence > 0.9
         # cx=208, w=83 -> x1=208-41=167, x2=208+41=249
         assert 160 <= d.x1 <= 170
         assert 245 <= d.x2 <= 255
 
     def test_low_confidence_filtered(self):
-        data = np.array([[208, 208, 83, 83, 0.1, 0.1]], dtype=np.float32)
+        # cls_logit=-3.0 -> sigmoid(-3.0)=0.047 -> conf=1.0*0.047=0.047 < 0.3
+        data = np.array([[208, 208, 83, 83, 1.0, -3.0]], dtype=np.float32)
         dets = decode_yolov6(data, img_size=416, num_classes=1, conf_thresh=0.3, iou_thresh=0.5)
         assert len(dets) == 0
 
