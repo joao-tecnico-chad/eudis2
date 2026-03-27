@@ -98,8 +98,15 @@ class DroneTracker:
 
     def update(self, detections, now):
         """Feed detections, return (tracked_det, hold_time, confirmed)."""
-        # Filter to high-confidence only
-        drones = [d for d in detections if d["confidence"] >= args.conf]
+        # Filter: high confidence + centroid in center 50% of frame
+        drones = []
+        for d in detections:
+            if d["confidence"] < args.conf:
+                continue
+            cx = (d["xmin"] + d["xmax"]) / 2
+            cy = (d["ymin"] + d["ymax"]) / 2
+            if 0.25 <= cx <= 0.75 and 0.25 <= cy <= 0.75:
+                drones.append(d)
         if not drones:
             if self.last_seen and (now - self.last_seen) > self.gap_sec:
                 self.reset()
@@ -196,6 +203,9 @@ HTML = """<!DOCTYPE html>
         if(!w||!h)return;
         c.width=w;c.height=h;c.style.width=w+'px';c.style.height=h+'px';
         ctx.clearRect(0,0,w,h);
+        // Draw center zone (50%)
+        ctx.strokeStyle='rgba(100,100,100,0.4)';ctx.lineWidth=1;ctx.setLineDash([5,5]);
+        ctx.strokeRect(w*0.25,h*0.25,w*0.5,h*0.5);ctx.setLineDash([]);
         document.getElementById('fps').textContent=d.fps.toFixed(0);
 
         const st=document.getElementById('status');
