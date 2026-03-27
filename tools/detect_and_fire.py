@@ -93,18 +93,30 @@ class DroneTracker:
                 self.reset()
             return None, 0, False
 
-        # Match nearest to tracked position (or pick best if no track)
+        # Pick best drone: largest box area × confidence (real drones are bigger)
+        def score(d):
+            area = (d["xmax"] - d["xmin"]) * (d["ymax"] - d["ymin"])
+            return area * d["confidence"]
+
         if self.start_time is not None:
+            # Active track — match nearest, but switch if a much better one appears
             def dist(d):
                 dx = (d["xmin"] + d["xmax"]) / 2 - self.cx
                 dy = (d["ymin"] + d["ymax"]) / 2 - self.cy
                 return math.sqrt(dx * dx + dy * dy)
             nearest = min(drones, key=dist)
-            if dist(nearest) > self.match_dist:
+            best_overall = max(drones, key=score)
+
+            # Switch to better detection if it scores 2x higher
+            if score(best_overall) > score(nearest) * 2:
+                best = best_overall
+                self.start_time = None  # reset hold timer for new target
+            elif dist(nearest) <= self.match_dist:
+                best = nearest
+            else:
                 return None, 0, False
-            best = nearest
         else:
-            best = max(drones, key=lambda d: d["confidence"])
+            best = max(drones, key=score)
 
         # Update track
         self.cx = (best["xmin"] + best["xmax"]) / 2
