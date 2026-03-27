@@ -16,6 +16,7 @@ models/*.blob
 
 # Allow only the production NNArchive
 !models/*.rvc2.tar.xz
+!models/yolov6s.pt
 
 # DepthAI cache
 .cache/
