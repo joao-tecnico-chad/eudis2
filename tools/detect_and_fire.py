@@ -75,7 +75,7 @@ def fire_servo():
 
     def rearm():
         global servo_ready
-        time.sleep(1.0)
+        time.sleep(2.0)
         servo.value = angle_to_value(HOME_ANGLE)  # 90 deg — home
         servo_ready = True
         print("*** REARMED ***")
@@ -320,8 +320,6 @@ with dai.Pipeline() as p:
     fps = 0.0
     frame_count = 0
     fps_time = time.monotonic()
-    has_fired = False
-
     try:
         while p.isRunning():
             mjpeg = q_mjpeg.tryGet()
@@ -354,13 +352,9 @@ with dai.Pipeline() as p:
 
             det, hold, confirmed = tracker.update(dets, time.time())
 
-            if confirmed and not has_fired and servo_ready:
+            if confirmed and servo_ready:
                 fire_servo()
-                has_fired = True
-
-            # Reset fired state when drone leaves
-            if det is None and has_fired:
-                has_fired = False
+                tracker.reset()  # reset hold timer so it has to re-confirm
 
             with lock:
                 tracked_det = det
@@ -368,7 +362,7 @@ with dai.Pipeline() as p:
                 track_confirmed = confirmed
                 track_ema = tracker.ema_conf
                 latest_fps = fps
-                fired = has_fired and not servo_ready
+                fired = not servo_ready
 
             if det:
                 status = "ARMED" if confirmed else f"tracking {hold:.1f}s"
