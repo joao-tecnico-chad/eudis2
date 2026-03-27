@@ -33,9 +33,21 @@ parser.add_argument("--no-servo", action="store_true", help="Disable servo (test
 parser.add_argument("--servo-gpio", type=int, default=18)
 args = parser.parse_args()
 
-# --- Servo ---
+# --- Servo (matches test_servo.py behavior) ---
+# Home: 90 deg, Fire: 135 deg, Pulse: 900-2100 µs (HS-5085MG)
 servo = None
 servo_ready = True
+HOME_ANGLE = 90.0
+FIRE_ANGLE = 135.0
+MIN_PULSE = 0.0009
+MAX_PULSE = 0.0021
+
+
+def angle_to_value(angle):
+    """Map 0-180 degrees to gpiozero's -1..+1 range."""
+    return max(-1.0, min(1.0, (angle / 90.0) - 1.0))
+
+
 if not args.no_servo:
     try:
         from gpiozero import Servo as GpioServo
@@ -43,12 +55,12 @@ if not args.no_servo:
         try:
             factory = PiGPIOFactory()
             servo = GpioServo(args.servo_gpio, pin_factory=factory,
-                              min_pulse_width=0.0009, max_pulse_width=0.0021)
+                              min_pulse_width=MIN_PULSE, max_pulse_width=MAX_PULSE)
         except Exception:
             servo = GpioServo(args.servo_gpio,
-                              min_pulse_width=0.0009, max_pulse_width=0.0021)
-        servo.value = -1  # rest position (0 deg)
-        print(f"Servo on GPIO{args.servo_gpio}")
+                              min_pulse_width=MIN_PULSE, max_pulse_width=MAX_PULSE)
+        servo.value = angle_to_value(HOME_ANGLE)  # 90 deg home
+        print(f"Servo on GPIO{args.servo_gpio} (home={HOME_ANGLE}°, fire={FIRE_ANGLE}°)")
     except ImportError:
         print("gpiozero not installed — servo disabled")
 
@@ -58,13 +70,13 @@ def fire_servo():
     if servo is None or not servo_ready:
         return
     servo_ready = False
-    servo.value = 1  # 180 deg — fire
+    servo.value = angle_to_value(FIRE_ANGLE)  # 135 deg — fire
     print("\n*** SERVO FIRED ***")
 
     def rearm():
         global servo_ready
-        time.sleep(1.5)
-        servo.value = -1  # back to rest
+        time.sleep(1.0)
+        servo.value = angle_to_value(HOME_ANGLE)  # 90 deg — home
         servo_ready = True
         print("*** REARMED ***")
     threading.Thread(target=rearm, daemon=True).start()
@@ -387,6 +399,7 @@ with dai.Pipeline() as p:
         print("\nShutdown")
 
 if servo:
-    servo.value = -1
+    servo.value = angle_to_value(HOME_ANGLE)
+    time.sleep(0.3)
     servo.detach()
 server.shutdown()
