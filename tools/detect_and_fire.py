@@ -210,7 +210,7 @@ HTML = """<!DOCTYPE html>
 
         const st=document.getElementById('status');
         if(d.fired){st.textContent='FIRED';st.className='status s-fire';}
-        else if(d.det){
+        else if(d.det && d.det.confidence>=0.7){
           const det=d.det;
           const x1=Math.max(0,det.xmin*w),y1=Math.max(0,det.ymin*h);
           const x2=Math.min(w,det.xmax*w),y2=Math.min(h,det.ymax*h);
