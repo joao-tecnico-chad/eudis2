@@ -28,7 +28,8 @@ def main():
     sensor.temperature_oversampling = 2
 
     print("BMP390 initialized on I2C (SCL=GPIO3, SDA=GPIO2)")
-    print(f"Sea level pressure: {sensor.sea_level_pressure:.1f} hPa")
+    print(f"Sea level pressure: {sensor.sea_level_pressure:.1f} hPa (default)")
+    print("Note: absolute altitude is approximate — use delta for relative changes")
     print("\nCommands: r (set reference), q (quit)")
     print("Reading every 0.5s...\n")
 
