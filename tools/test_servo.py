@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Interactive servo test on GPIO18.
+"""Interactive servo test for Hitec HS-5085MG on GPIO18.
+
+Servo specs (HS-5085MG):
+  - Digital, metal gear, micro
+  - Pulse width: 900-2100 µs (Hitec standard)
+  - Torque: 4.3 kg-cm @ 6V
+  - Speed: 0.13 sec/60° @ 6V
 
 Controls:
   0-180  — set angle directly
@@ -13,6 +19,10 @@ import sys
 
 GPIO_PIN = 18
 STEP_DELAY = 0.02  # seconds between sweep steps
+
+# Hitec HS-5085MG pulse range (seconds)
+MIN_PULSE = 0.0009  # 900 µs
+MAX_PULSE = 0.0021  # 2100 µs
 
 
 def angle_to_value(angle: float) -> float:
@@ -28,13 +38,20 @@ def main():
         print("gpiozero not installed. Run: pip install gpiozero pigpio")
         sys.exit(1)
 
+    servo_kwargs = dict(
+        min_pulse_width=MIN_PULSE,
+        max_pulse_width=MAX_PULSE,
+    )
+
     try:
         factory = PiGPIOFactory()
-        servo = Servo(GPIO_PIN, pin_factory=factory)
-        print(f"Using pigpio factory on GPIO{GPIO_PIN}")
+        servo = Servo(GPIO_PIN, pin_factory=factory, **servo_kwargs)
+        print(f"Using pigpio on GPIO{GPIO_PIN}")
     except Exception:
-        servo = Servo(GPIO_PIN)
-        print(f"Using default pin factory on GPIO{GPIO_PIN} (pigpio not available)")
+        servo = Servo(GPIO_PIN, **servo_kwargs)
+        print(f"Using default pin factory on GPIO{GPIO_PIN}")
+
+    print(f"Pulse range: {MIN_PULSE*1e6:.0f}-{MAX_PULSE*1e6:.0f} µs (HS-5085MG)")
 
     # Start at 0 degrees
     servo.value = angle_to_value(0)

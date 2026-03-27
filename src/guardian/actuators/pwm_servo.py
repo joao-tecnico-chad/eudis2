@@ -19,6 +19,10 @@ class PWMServo(ServoABC):
 
     REARM_DELAY_S = 1.0
 
+    # Hitec HS-5085MG pulse range
+    MIN_PULSE = 0.0009  # 900 µs
+    MAX_PULSE = 0.0021  # 2100 µs
+
     def __init__(self, config: GuardianConfig):
         self._gpio = config.servo_gpio
         self._rest_angle = config.servo_arm_angle      # 0 deg — resting / rearmed
@@ -33,12 +37,16 @@ class PWMServo(ServoABC):
         from gpiozero import Servo as GpioServo
         from gpiozero.pins.pigpio import PiGPIOFactory
 
+        servo_kwargs = dict(
+            min_pulse_width=self.MIN_PULSE,
+            max_pulse_width=self.MAX_PULSE,
+        )
         try:
             factory = PiGPIOFactory()
-            self._servo = GpioServo(self._gpio, pin_factory=factory)
+            self._servo = GpioServo(self._gpio, pin_factory=factory, **servo_kwargs)
         except Exception:
-            self._servo = GpioServo(self._gpio)
-        print(f"PWM servo initialized on GPIO{self._gpio}")
+            self._servo = GpioServo(self._gpio, **servo_kwargs)
+        print(f"PWM servo initialized on GPIO{self._gpio} (HS-5085MG, {self.MIN_PULSE*1e6:.0f}-{self.MAX_PULSE*1e6:.0f} µs)")
 
     def _set_angle(self, angle: float) -> None:
         """Map 0-180 deg to gpiozero's -1..+1 range."""

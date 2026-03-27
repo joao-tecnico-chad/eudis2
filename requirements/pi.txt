@@ -1,5 +1,7 @@
 depthai>=2.24
 adafruit-circuitpython-bmp3xx
 gpiozero
+pigpio
+lgpio
 numpy
 opencv-python-headless

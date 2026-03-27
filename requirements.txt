@@ -1,0 +1,34 @@
+# Root requirements — installs everything for full development setup.
+# For targeted installs, use the files in requirements/ instead:
+#   pip install -r requirements/pi.txt       — Raspberry Pi runtime
+#   pip install -r requirements/desktop.txt  — Desktop dev (ONNX stub)
+#   pip install -r requirements/train.txt    — Model training (GPU)
+
+# --- Core (all environments) ---
+numpy>=1.24.0
+opencv-python-headless>=4.1.2
+
+# --- Pi hardware ---
+depthai>=2.24
+gpiozero
+pigpio
+lgpio
+adafruit-circuitpython-bmp3xx
+
+# --- Desktop / ONNX inference ---
+onnxruntime
+opencv-python>=4.1.2
+
+# --- Training ---
+roboflow
+kaggle
+blobconverter
+openvino-dev
+onnx>=1.10.0
+onnxsim
+ultralytics
+torch>=1.8.0
+torchvision>=0.9.0
+
+# --- Dev / Testing ---
+pytest
