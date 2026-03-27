@@ -105,35 +105,32 @@ class DroneTracker:
                 self.reset()
             return None, 0, False
 
-        # Pick best drone: largest box area × confidence (real drones are bigger)
-        def score(d):
-            area = (d["xmax"] - d["xmin"]) * (d["ymax"] - d["ymin"])
-            return area * d["confidence"]
-
         if self.start_time is not None:
-            # Active track — match nearest, but switch if a much better one appears
+            # Active track — match nearest to tracked position
             def dist(d):
                 dx = (d["xmin"] + d["xmax"]) / 2 - self.cx
                 dy = (d["ymin"] + d["ymax"]) / 2 - self.cy
                 return math.sqrt(dx * dx + dy * dy)
             nearest = min(drones, key=dist)
-            best_overall = max(drones, key=score)
+            best_by_conf = max(drones, key=lambda d: d["confidence"])
 
-            # Switch to better detection if it scores 2x higher
-            if score(best_overall) > score(nearest) * 2:
-                best = best_overall
-                self.start_time = None  # reset hold timer for new target
+            # Switch to higher confidence detection if it's significantly better
+            if best_by_conf["confidence"] > self.ema_conf * 1.5 and dist(best_by_conf) > self.match_dist:
+                best = best_by_conf
+                self.start_time = None  # reset for new target
             elif dist(nearest) <= self.match_dist:
                 best = nearest
             else:
                 return None, 0, False
         else:
-            best = max(drones, key=score)
+            # No active track — pick highest confidence
+            best = max(drones, key=lambda d: d["confidence"])
 
         # Update track
         self.cx = (best["xmin"] + best["xmax"]) / 2
         self.cy = (best["ymin"] + best["ymax"]) / 2
-        self.ema_conf = 0.3 * best["confidence"] + 0.7 * self.ema_conf
+        # Heavy smoothing (alpha=0.15) to handle confidence fluctuations
+        self.ema_conf = 0.15 * best["confidence"] + 0.85 * self.ema_conf
         self.best_det = best
         self.last_seen = now
 
