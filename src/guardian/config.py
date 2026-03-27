@@ -1,27 +1,25 @@
-"""Central configuration for Drone Guardian."""
+"""Guardian configuration."""
 
+import platform
 from dataclasses import dataclass, field
-from pathlib import Path
 
 
 @dataclass
 class GuardianConfig:
     # --- Detection ---
-    blob_path: str = "models/best_yolov6n_openvino_2022.1_6shave.blob"
-    onnx_path: str = "models/drone_yolov6n.onnx"
+    model_path: str = "models/emine_yolov6s.rvc2.tar.xz"
     img_size: int = 640
-    conf_threshold: float = 0.5
+    conf_threshold: float = 0.3
     iou_threshold: float = 0.5
     max_box_ratio: float = 0.6
-    model_format: str = "yolov6"  # "yolov6" or "yolov8"
     num_classes: int = 1
     labels: list[str] = field(default_factory=lambda: ["drone"])
 
     # --- Camera ---
-    camera_fov_deg: float = 120.0  # OAK-1W IMX378
+    camera_fov_deg: float = 120.0
     real_drone_width_m: float = 0.35
 
-    # --- Activation layers ---
+    # --- Activation ---
     altitude_margin_m: float = 5.0
     centroid_zone_ratio: float = 0.30
     min_box_area_ratio: float = 0.01
@@ -35,20 +33,15 @@ class GuardianConfig:
     # --- Streaming ---
     stream_host: str = "0.0.0.0"
     stream_port: int = 8080
-    jpeg_quality: int = 50
+    jpeg_quality: int = 70
 
-    # --- Hardware mode ---
+    # --- Hardware ---
     hardware_mode: str = "auto"  # "pi", "desktop", "auto"
-    source: str = "0"  # video source for desktop mode (webcam index or file)
+    source: str = "0"
 
     def is_pi(self) -> bool:
         if self.hardware_mode == "pi":
             return True
         if self.hardware_mode == "desktop":
             return False
-        # Auto-detect
-        try:
-            with open("/proc/device-tree/model") as f:
-                return "raspberry pi" in f.read().lower()
-        except (FileNotFoundError, PermissionError):
-            return False
+        return platform.machine().startswith("aarch64") or platform.machine().startswith("arm")

@@ -1,6 +1,7 @@
-"""DepthAI OAK-1W detector — runs YOLOv6/v8 blob on the MyriadX VPU.
+"""OAK-1W detector using DetectionNetwork + NNArchive.
 
-Single camera output splits to NN and hardware MJPEG encoder.
+All YOLO decoding happens on the MyriadX VPU.
+Hardware MJPEG encoder for video streaming.
 """
 
 from pathlib import Path
@@ -9,95 +10,94 @@ import numpy as np
 
 from guardian.config import GuardianConfig
 from guardian.detection.base import DetectorABC
-from guardian.utils.decode import Detection, decode_yolov6, decode_yolov8
+from guardian.utils.decode import Detection
 
 
 class OakDetector(DetectorABC):
     def __init__(self, config: GuardianConfig):
         self._config = config
         self._pipeline = None
-        self._q_nn = None
+        self._q_det = None
         self._q_mjpeg = None
+        self._labels = []
 
     def start(self) -> None:
         import depthai as dai
 
-        blob_path = Path(self._config.blob_path)
-        if not blob_path.exists():
-            raise FileNotFoundError(f"Blob not found: {blob_path}")
+        model_path = Path(self._config.model_path)
+        if not model_path.exists():
+            raise FileNotFoundError(f"Model not found: {model_path}")
 
         self._pipeline = dai.Pipeline()
+        self._pipeline.setXLinkChunkSize(0)
 
         cam = self._pipeline.create(dai.node.Camera).build()
 
-        # BGR for NN inference
-        nn_out = cam.requestOutput(
-            (self._config.img_size, self._config.img_size),
-            dai.ImgFrame.Type.BGR888p,
+        # Camera at high res, ImageManip resizes for NN (better quality)
+        cam_preview = cam.requestOutput(
+            (1280, 720), dai.ImgFrame.Type.BGR888p, fps=10,
         )
 
-        # NV12 for hardware MJPEG encoder (encoder requires NV12)
-        enc_out = cam.requestOutput(
-            (self._config.img_size, self._config.img_size),
-            dai.ImgFrame.Type.NV12,
-        )
+        nn_archive = dai.NNArchive(str(model_path))
+        nn_size = nn_archive.getInputSize()
 
-        # Neural network
-        nn = self._pipeline.create(dai.node.NeuralNetwork)
-        nn.setBlobPath(str(blob_path))
-        nn.setNumInferenceThreads(2)
-        nn.input.setBlocking(False)
-        nn_out.link(nn.input)
+        manip = self._pipeline.create(dai.node.ImageManip)
+        manip.initialConfig.setOutputSize(nn_size[0], nn_size[1])
+        manip.initialConfig.setFrameType(dai.ImgFrame.Type.BGR888p)
+        manip.setMaxOutputFrameSize(nn_size[0] * nn_size[1] * 3)
+        cam_preview.link(manip.inputImage)
+
+        # DetectionNetwork — on-device YOLO decode
+        det_nn = self._pipeline.create(dai.node.DetectionNetwork).build(
+            manip.out, nn_archive
+        )
+        det_nn.setConfidenceThreshold(self._config.conf_threshold)
+        det_nn.setNumInferenceThreads(2)
+        self._labels = det_nn.getClasses()
 
         # Hardware MJPEG encoder
+        enc_out = cam.requestOutput(
+            (640, 480), dai.ImgFrame.Type.NV12, fps=10,
+        )
         encoder = self._pipeline.create(dai.node.VideoEncoder)
-        encoder.setDefaultProfilePreset(15, dai.VideoEncoderProperties.Profile.MJPEG)
+        encoder.setDefaultProfilePreset(
+            10, dai.VideoEncoderProperties.Profile.MJPEG,
+        )
         encoder.setQuality(self._config.jpeg_quality)
         enc_out.link(encoder.input)
 
-        # Output queues
-        self._q_nn = nn.out.createOutputQueue(maxSize=4, blocking=False)
-        self._q_mjpeg = encoder.out.createOutputQueue(maxSize=4, blocking=False)
+        self._q_det = det_nn.out.createOutputQueue(maxSize=1, blocking=False)
+        self._q_mjpeg = encoder.out.createOutputQueue(maxSize=1, blocking=False)
 
         self._pipeline.start()
-        print(f"OAK-1W started ({self._config.model_format}, "
-              f"{self._config.img_size}x{self._config.img_size}, HW MJPEG)")
+        print(f"OAK-1W started (DetectionNetwork, {nn_size[0]}x{nn_size[1]}, HW MJPEG)")
 
     def get_frame_and_detections(self) -> tuple[np.ndarray | None, list[Detection] | None]:
-        in_nn = self._q_nn.tryGet()
-        if in_nn is None:
+        msg = self._q_det.tryGet()
+        if msg is None:
             return None, None
 
-        output = np.array(in_nn.getFirstTensor())
-
-        if self._config.model_format == "yolov8":
-            detections = decode_yolov8(
-                output, scale=1.0,
-                conf_thresh=self._config.conf_threshold,
-                iou_thresh=self._config.iou_threshold,
-            )
-        else:
-            detections = decode_yolov6(
-                output, self._config.img_size, self._config.num_classes,
-                self._config.conf_threshold, self._config.iou_threshold,
-            )
-
-        # Filter oversized boxes
-        img = self._config.img_size
-        detections = [
-            d for d in detections
-            if (d.x2 - d.x1) / img <= self._config.max_box_ratio
-            and (d.y2 - d.y1) / img <= self._config.max_box_ratio
-        ]
+        detections = []
+        for d in msg.detections:
+            label = self._labels[d.label] if d.label < len(self._labels) else "drone"
+            # Convert normalized coords (0-1) to pixel coords
+            img = self._config.img_size
+            detections.append(Detection(
+                x1=int(max(0, d.xmin) * img),
+                y1=int(max(0, d.ymin) * img),
+                x2=int(min(1, d.xmax) * img),
+                y2=int(min(1, d.ymax) * img),
+                confidence=d.confidence,
+                class_id=d.label,
+            ))
 
         return None, detections
 
     def get_jpeg(self) -> bytes | None:
-        """Get hardware-encoded MJPEG frame. Zero Pi CPU cost."""
-        in_mjpeg = self._q_mjpeg.tryGet()
-        if in_mjpeg is None:
+        msg = self._q_mjpeg.tryGet()
+        if msg is None:
             return None
-        return bytes(in_mjpeg.getData())
+        return bytes(msg.getData())
 
     def stop(self) -> None:
         if self._pipeline is not None:

@@ -1,48 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+
 # Model weights (large files)
 models/*.pt
 models/*.onnx
+models/*.onnx.data
 models/*.pth
-*.pth
+models/*.blob
 
-# Blobs — allow deployment blobs, ignore others
-*.blob
-!models/drone_yolov6n.blob
-!models/nuno_yolov8n.blob
-
-# macOS
-.DS_Store
-
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-*.egg-info/
-
-# IDE
-.idea/
-.vscode/
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Logs
-*.log
-
-# YOLOv6 clone
-YOLOv6/
-tools/kaggle/YOLOv6/
-
-# Datasets
-datasets/
-
-# Output directories
-output/
-runs/
+# Allow only the production NNArchive
+!models/*.rvc2.tar.xz
 
 # DepthAI cache
 .cache/
 .depthai_cached_models/
 
+# Datasets
+datasets/
+
 # Environment
 .env
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# YOLOv6 training (cloned at runtime)
+YOLOv6/
