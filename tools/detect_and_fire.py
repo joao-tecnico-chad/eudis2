@@ -227,6 +227,10 @@ HTML = """<!DOCTYPE html>
         <div id="bar" style="background:#0f0;height:100%;border-radius:3px;width:0;transition:width .1s"></div>
       </div>
     </div>
+    <div class="row">
+      <div class="card"><h3>Altitude</h3><div class="val" id="alt">0.0m</div></div>
+      <div class="card"><h3>Status</h3><div class="val" id="air" style="color:#f44">GROUND</div></div>
+    </div>
   </div>
   <script>
     const img=document.getElementById('stream'),c=document.getElementById('c'),ctx=c.getContext('2d');
@@ -240,6 +244,10 @@ HTML = """<!DOCTYPE html>
         ctx.strokeStyle='rgba(100,100,100,0.4)';ctx.lineWidth=1;ctx.setLineDash([5,5]);
         ctx.strokeRect(w*0.25,h*0.25,w*0.5,h*0.5);ctx.setLineDash([]);
         document.getElementById('fps').textContent=d.fps.toFixed(0);
+        document.getElementById('alt').textContent=(d.alt_delta>=0?'+':'')+d.alt_delta.toFixed(1)+'m';
+        const airEl=document.getElementById('air');
+        if(d.airborne){airEl.textContent='AIRBORNE';airEl.style.color='#0f0';}
+        else{airEl.textContent='GROUND';airEl.style.color='#f44';}
 
         const st=document.getElementById('status');
         if(d.fired){st.textContent='FIRED';st.className='status s-fire';}
