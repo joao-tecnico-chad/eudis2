@@ -26,7 +26,7 @@ class GuardianConfig:
     consecutive_frames: int = 5
 
     # --- Servo ---
-    servo_gpio: int = 13
+    servo_gpio: int = 18
     servo_arm_angle: float = 0.0
     servo_fire_angle: float = 90.0
 
