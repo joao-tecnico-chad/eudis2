@@ -20,9 +20,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import depthai as dai
 
-MODEL = "models/emine_yolov6s.rvc2.tar.xz"
+DEFAULT_MODEL = "models/emine_yolov6s.rvc2.tar.xz"
 
 parser = argparse.ArgumentParser(description="Drone detection dashboard")
+parser.add_argument("--model", default=DEFAULT_MODEL, help="Path to NNArchive (.tar.xz)")
 parser.add_argument("--conf", type=float, default=0.3, help="Confidence threshold")
 parser.add_argument("--fps", type=int, default=10, help="Camera FPS")
 parser.add_argument("--port", type=int, default=8080, help="Dashboard port")
@@ -146,8 +147,12 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-# Start web server
-server = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
+# Start web server (suppress broken pipe tracebacks)
+class QuietServer(ThreadingHTTPServer):
+    def handle_error(self, request, client_address):
+        pass  # Suppress BrokenPipeError tracebacks
+
+server = QuietServer(("0.0.0.0", args.port), Handler)
 threading.Thread(target=server.serve_forever, daemon=True).start()
 print(f"Dashboard: http://0.0.0.0:{args.port}")
 
@@ -157,7 +162,7 @@ with dai.Pipeline() as p:
     cam = p.create(dai.node.Camera).build()
 
     # Camera directly at NN resolution (no ImageManip overhead)
-    nn_archive = dai.NNArchive(MODEL)
+    nn_archive = dai.NNArchive(args.model)
     nn_size = nn_archive.getInputSize()
     cam_preview = cam.requestOutput(
         (nn_size[0], nn_size[1]), dai.ImgFrame.Type.BGR888p, fps=args.fps,
@@ -181,7 +186,7 @@ with dai.Pipeline() as p:
     q_mjpeg = encoder.out.createOutputQueue(maxSize=1, blocking=False)
 
     p.start()
-    print(f"OAK running — drone YOLOv6s 640x640, conf>{args.conf}")
+    print(f"OAK running — {args.model}, {nn_size[0]}x{nn_size[1]}, conf>{args.conf}")
 
     fps = 0.0
     frame_count = 0
