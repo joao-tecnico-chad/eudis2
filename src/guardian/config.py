@@ -7,9 +7,9 @@ from pathlib import Path
 @dataclass
 class GuardianConfig:
     # --- Detection ---
-    blob_path: str = "models/drone_yolov6n.blob"
+    blob_path: str = "models/best_yolov6n_openvino_2022.1_6shave.blob"
     onnx_path: str = "models/drone_yolov6n.onnx"
-    img_size: int = 416
+    img_size: int = 640
     conf_threshold: float = 0.5
     iou_threshold: float = 0.5
     max_box_ratio: float = 0.6

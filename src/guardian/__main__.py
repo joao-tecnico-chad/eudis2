@@ -14,7 +14,7 @@ def main():
                         help="Hardware mode (default: auto-detect)")
     parser.add_argument("--source", default="0",
                         help="Video source for desktop mode: webcam index or file path")
-    parser.add_argument("--blob", default="models/drone_yolov6n.blob",
+    parser.add_argument("--blob", default="models/best_yolov6n_openvino_2022.1_6shave.blob",
                         help="Path to .blob model for OAK-1W")
     parser.add_argument("--onnx", default="models/drone_yolov6n.onnx",
                         help="Path to .onnx model for desktop testing")
@@ -26,7 +26,7 @@ def main():
                         help="JPEG quality for stream (1-100)")
     parser.add_argument("--model-format", choices=["yolov6", "yolov8"], default="yolov6",
                         help="Model architecture format")
-    parser.add_argument("--img-size", type=int, default=416,
+    parser.add_argument("--img-size", type=int, default=640,
                         help="Model input size")
     parser.add_argument("--detect-only", action="store_true",
                         help="Detection + streaming only, no barometer/servo")

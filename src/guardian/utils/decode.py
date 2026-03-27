@@ -45,15 +45,23 @@ def decode_yolov6(output: np.ndarray, img_size: int, num_classes: int,
                   conf_thresh: float, iou_thresh: float) -> list[Detection]:
     """Decode raw YOLOv6 network output (vectorized).
 
-    Input shape: [num_anchors, 4+1+num_classes] = [cx, cy, w, h, obj, cls_logits...].
-    Coordinates are in pixel space. Class scores are raw logits (sigmoid applied here).
+    Input shape: [num_anchors, 4+1+num_classes] = [cx, cy, w, h, obj, cls...].
+    Coordinates are in pixel space.
+    Class scores may be probabilities (0-1) or raw logits — auto-detected.
     """
     preds = output.reshape(-1, 4 + 1 + num_classes)
 
     obj = preds[:, 4]
-    cls_logits = preds[:, 5:]
-    cls_ids = cls_logits.argmax(axis=1)
-    cls_scores = _sigmoid(cls_logits[np.arange(len(cls_logits)), cls_ids])
+    cls_raw = preds[:, 5:]
+    cls_ids = cls_raw.argmax(axis=1)
+    cls_vals = cls_raw[np.arange(len(cls_raw)), cls_ids]
+
+    # Auto-detect: if max class score > 10, it's raw logits needing sigmoid
+    if cls_vals.max() > 10.0:
+        cls_scores = _sigmoid(cls_vals)
+    else:
+        cls_scores = cls_vals
+
     confs = obj * cls_scores
 
     mask = confs >= conf_thresh
