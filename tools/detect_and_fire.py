@@ -30,8 +30,41 @@ parser.add_argument("--hold", type=float, default=3.0, help="Seconds tracked bef
 parser.add_argument("--fps", type=int, default=15)
 parser.add_argument("--port", type=int, default=8080)
 parser.add_argument("--no-servo", action="store_true", help="Disable servo (testing)")
+parser.add_argument("--no-baro", action="store_true", help="Disable barometer")
+parser.add_argument("--alt-min", type=float, default=1.0, help="Min altitude delta to arm (meters)")
 parser.add_argument("--servo-gpio", type=int, default=18)
 args = parser.parse_args()
+
+# --- Barometer (BMP390 on I2C) ---
+baro = None
+baro_ref = 0.0
+baro_alt = 0.0
+alt_delta = 0.0
+BARO_WINDOW = 20
+
+if not args.no_baro:
+    try:
+        import board
+        import busio
+        import adafruit_bmp3xx
+        from collections import deque
+
+        i2c = busio.I2C(board.SCL, board.SDA)
+        baro = adafruit_bmp3xx.BMP3XX_I2C(i2c)
+        baro.pressure_oversampling = 32
+        baro.temperature_oversampling = 2
+        baro.filter_coefficient = 16
+
+        # Warm up and set reference
+        alt_buf = deque(maxlen=BARO_WINDOW)
+        for _ in range(BARO_WINDOW):
+            alt_buf.append(baro.altitude)
+            time.sleep(0.05)
+        baro_ref = sum(alt_buf) / len(alt_buf)
+        print(f"Barometer: ref={baro_ref:.1f}m, arm when delta>{args.alt_min}m")
+    except (ImportError, Exception) as e:
+        print(f"Barometer not available: {e}")
+        baro = None
 
 # --- Servo (matches test_servo.py behavior) ---
 # Home: 90 deg, Fire: 135 deg, Pulse: 900-2100 µs (HS-5085MG)
@@ -279,6 +312,8 @@ class Handler(BaseHTTPRequestHandler):
                     "ema": track_ema,
                     "fps": latest_fps,
                     "fired": fired,
+                    "alt_delta": round(alt_delta, 2),
+                    "airborne": (baro is None) or (alt_delta > args.alt_min),
                 }).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -360,11 +395,20 @@ with dai.Pipeline() as p:
                     "ymax": round(min(1, d.ymax), 4),
                 })
 
+            # Read barometer
+            if baro is not None:
+                alt_buf.append(baro.altitude)
+                baro_alt = sum(alt_buf) / len(alt_buf)
+                alt_delta = baro_alt - baro_ref
+
+            is_airborne = (baro is None) or (alt_delta > args.alt_min)
+
             det, hold, confirmed = tracker.update(dets, time.time())
 
-            if confirmed and servo_ready:
+            # Only fire if airborne AND confirmed
+            if confirmed and servo_ready and is_airborne:
                 fire_servo()
-                tracker.reset()  # reset hold timer so it has to re-confirm
+                tracker.reset()
 
             with lock:
                 tracked_det = det
@@ -375,8 +419,10 @@ with dai.Pipeline() as p:
                 fired = not servo_ready
 
             if det:
+                alt_str = f" alt={alt_delta:+.1f}m" if baro else ""
+                air_str = "AIRBORNE" if is_airborne else "GROUNDED"
                 status = "ARMED" if confirmed else f"tracking {hold:.1f}s"
-                print(f"\r  drone {det['confidence']:.0%} ema={tracker.ema_conf:.0%} {status} [{fps:.0f}fps]   ", end="", flush=True)
+                print(f"\r  drone {det['confidence']:.0%} ema={tracker.ema_conf:.0%} {status} {air_str}{alt_str} [{fps:.0f}fps]   ", end="", flush=True)
 
     except KeyboardInterrupt:
         print("\nShutdown")
