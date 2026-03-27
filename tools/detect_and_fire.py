@@ -231,6 +231,10 @@ HTML = """<!DOCTYPE html>
       <div class="card"><h3>Altitude</h3><div class="val" id="alt">0.0m</div></div>
       <div class="card"><h3>Status</h3><div class="val" id="air" style="color:#f44">GROUND</div></div>
     </div>
+    <button onclick="fetch('/reset-alt').then(()=>document.getElementById('alt').textContent='0.0m')"
+      style="background:#1a2332;color:#4a9eff;border:1px solid #234;padding:8px;border-radius:4px;cursor:pointer;font-family:inherit;letter-spacing:1px">
+      RESET ALTITUDE
+    </button>
   </div>
   <script>
     const img=document.getElementById('stream'),c=document.getElementById('c'),ctx=c.getContext('2d');
@@ -311,6 +315,17 @@ class Handler(BaseHTTPRequestHandler):
                     time.sleep(0.03)
             except (BrokenPipeError, ConnectionResetError):
                 pass
+        elif self.path == "/reset-alt":
+            with lock:
+                global baro_ref, baro_alt, alt_delta
+                if baro is not None:
+                    baro_ref = baro_alt
+                    alt_delta = 0.0
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+            print("\n  Altitude reference reset")
+            return
         elif self.path == "/state":
             with lock:
                 data = json.dumps({
