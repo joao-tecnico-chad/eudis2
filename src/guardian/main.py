@@ -73,6 +73,10 @@ class DroneGuardian:
 
                 _, detections = self.detector.get_frame_and_detections()
 
+                if detections:
+                    best = max(detections, key=lambda d: d.confidence)
+                    print(f"\r  DETECT n={len(detections)} best={best.confidence:.0%} box=({best.x1},{best.y1})-({best.x2},{best.y2})", end="", flush=True)
+
                 # Push video stream
                 if is_pi:
                     jpeg = self.detector.get_jpeg()
