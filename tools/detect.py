@@ -156,19 +156,15 @@ with dai.Pipeline() as p:
     p.setXLinkChunkSize(0)
     cam = p.create(dai.node.Camera).build()
 
-    # Camera at high res, ImageManip resizes for NN
-    cam_preview = cam.requestOutput((1280, 720), dai.ImgFrame.Type.BGR888p, fps=args.fps)
-
+    # Camera directly at NN resolution (no ImageManip overhead)
     nn_archive = dai.NNArchive(MODEL)
     nn_size = nn_archive.getInputSize()
-    manip = p.create(dai.node.ImageManip)
-    manip.initialConfig.setOutputSize(nn_size[0], nn_size[1])
-    manip.initialConfig.setFrameType(dai.ImgFrame.Type.BGR888p)
-    manip.setMaxOutputFrameSize(nn_size[0] * nn_size[1] * 3)
-    cam_preview.link(manip.inputImage)
+    cam_preview = cam.requestOutput(
+        (nn_size[0], nn_size[1]), dai.ImgFrame.Type.BGR888p, fps=args.fps,
+    )
 
     # DetectionNetwork — on-device YOLO decode
-    det_nn = p.create(dai.node.DetectionNetwork).build(manip.out, nn_archive)
+    det_nn = p.create(dai.node.DetectionNetwork).build(cam_preview, nn_archive)
     det_nn.setConfidenceThreshold(args.conf)
     det_nn.setNumInferenceThreads(2)
     labels = det_nn.getClasses()
