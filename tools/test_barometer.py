@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Interactive barometer test for BMP390L on I2C (SCL=GPIO3, SDA=GPIO2).
+"""Interactive barometer test for BMP390 on I2C (SCL=GPIO3, SDA=GPIO2).
 
 Controls:
   r      — set current altitude as reference (zero point)
@@ -27,7 +27,7 @@ def main():
     sensor.pressure_oversampling = 8
     sensor.temperature_oversampling = 2
 
-    print("BMP390L initialized on I2C (SCL=GPIO3, SDA=GPIO2)")
+    print("BMP390 initialized on I2C (SCL=GPIO3, SDA=GPIO2)")
     print(f"Sea level pressure: {sensor.sea_level_pressure:.1f} hPa")
     print("\nCommands: r (set reference), q (quit)")
     print("Reading every 0.5s...\n")
