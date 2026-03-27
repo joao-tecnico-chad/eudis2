@@ -119,6 +119,49 @@ def test_nn_plus_mjpeg_small(p):
     return [q_det]
 
 
+def test_nn_max_shaves(p):
+    """NN with explicit max shaves (6 per thread)."""
+    cam = p.create(dai.node.Camera).build()
+    nn_archive = dai.NNArchive(args.model)
+    nn_size = nn_archive.getInputSize()
+    cam_out = cam.requestOutput((nn_size[0], nn_size[1]), dai.ImgFrame.Type.BGR888p)
+    det = p.create(dai.node.DetectionNetwork).build(cam_out, nn_archive)
+    det.setConfidenceThreshold(0.5)
+    det.setNumInferenceThreads(2)
+    det.setNumShavesPerInferenceThread(6)
+    q = det.out.createOutputQueue(maxSize=1, blocking=False)
+    return [q]
+
+
+def test_nn_1thread_max_shaves(p):
+    """NN 1 thread with all shaves (13)."""
+    cam = p.create(dai.node.Camera).build()
+    nn_archive = dai.NNArchive(args.model)
+    nn_size = nn_archive.getInputSize()
+    cam_out = cam.requestOutput((nn_size[0], nn_size[1]), dai.ImgFrame.Type.BGR888p)
+    det = p.create(dai.node.DetectionNetwork).build(cam_out, nn_archive)
+    det.setConfidenceThreshold(0.5)
+    det.setNumInferenceThreads(1)
+    det.setNumShavesPerInferenceThread(13)
+    q = det.out.createOutputQueue(maxSize=1, blocking=False)
+    return [q]
+
+
+def test_nn_2thread_6shaves_nce(p):
+    """NN 2 threads, 6 shaves, 2 NCEs."""
+    cam = p.create(dai.node.Camera).build()
+    nn_archive = dai.NNArchive(args.model)
+    nn_size = nn_archive.getInputSize()
+    cam_out = cam.requestOutput((nn_size[0], nn_size[1]), dai.ImgFrame.Type.BGR888p)
+    det = p.create(dai.node.DetectionNetwork).build(cam_out, nn_archive)
+    det.setConfidenceThreshold(0.5)
+    det.setNumInferenceThreads(2)
+    det.setNumShavesPerInferenceThread(6)
+    det.setNumNCEPerInferenceThread(2)
+    q = det.out.createOutputQueue(maxSize=1, blocking=False)
+    return [q]
+
+
 # Check USB speed
 device = dai.Device()
 usb_speed = device.getUsbSpeed()
@@ -131,6 +174,9 @@ results["NN only (1 thread)"] = run_test("NN only (1 thread)", test_nn_only_1thr
 results["NN only (2 threads)"] = run_test("NN only (2 threads)", test_nn_only_2thread)
 results["NN + MJPEG 640x480"] = run_test("NN + MJPEG 640x480", test_nn_plus_mjpeg)
 results["NN + MJPEG 320x240"] = run_test("NN + MJPEG 320x240", test_nn_plus_mjpeg_small)
+results["NN 2t x 6 shaves"] = run_test("NN 2 threads x 6 shaves", test_nn_max_shaves)
+results["NN 1t x 13 shaves"] = run_test("NN 1 thread x 13 shaves", test_nn_1thread_max_shaves)
+results["NN 2t x 6sh + 2NCE"] = run_test("NN 2 threads x 6 shaves + 2 NCE", test_nn_2thread_6shaves_nce)
 
 print(f"\n{'='*50}")
 print(f"SUMMARY — {args.model}")
