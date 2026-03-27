@@ -105,26 +105,8 @@ class DroneTracker:
                 self.reset()
             return None, 0, False
 
-        if self.start_time is not None:
-            # Active track — match nearest to tracked position
-            def dist(d):
-                dx = (d["xmin"] + d["xmax"]) / 2 - self.cx
-                dy = (d["ymin"] + d["ymax"]) / 2 - self.cy
-                return math.sqrt(dx * dx + dy * dy)
-            nearest = min(drones, key=dist)
-            best_by_conf = max(drones, key=lambda d: d["confidence"])
-
-            # Switch to higher confidence detection if it's significantly better
-            if best_by_conf["confidence"] > self.ema_conf * 1.5 and dist(best_by_conf) > self.match_dist:
-                best = best_by_conf
-                self.start_time = None  # reset for new target
-            elif dist(nearest) <= self.match_dist:
-                best = nearest
-            else:
-                return None, 0, False
-        else:
-            # No active track — pick highest confidence
-            best = max(drones, key=lambda d: d["confidence"])
+        # Always pick highest confidence detection
+        best = max(drones, key=lambda d: d["confidence"])
 
         # Update track
         self.cx = (best["xmin"] + best["xmax"]) / 2
