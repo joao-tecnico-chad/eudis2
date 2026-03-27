@@ -27,8 +27,8 @@ class GuardianConfig:
 
     # --- Servo ---
     servo_gpio: int = 18
-    servo_arm_angle: float = 0.0
-    servo_fire_angle: float = 90.0
+    servo_arm_angle: float = 90.0
+    servo_fire_angle: float = 135.0
 
     # --- Streaming ---
     stream_host: str = "0.0.0.0"

@@ -92,10 +92,10 @@ def main():
 
     print(f"Pulse range: {MIN_PULSE*1e6:.0f}-{MAX_PULSE*1e6:.0f} µs (HS-5085MG)")
 
-    # Start at 0 degrees
-    servo.value = angle_to_value(0)
-    current_angle = 0.0
-    print("Servo at 0 deg")
+    # Start at home (90 deg)
+    servo.value = angle_to_value(90)
+    current_angle = 90.0
+    print("Servo at 90 deg (home)")
     print(f"Speed: {current_speed}")
 
     print("\nCommands: 0-180 (angle), f (fire), s (sweep), speed N (1-100), q (quit)")
@@ -108,11 +108,11 @@ def main():
                 break
 
             elif cmd == "f":
-                print("FIRE -> 90 deg")
-                move_to(servo, 90)
+                print("FIRE -> 135 deg")
+                move_to(servo, 135)
                 time.sleep(1.0)
-                print("REARM -> 0 deg")
-                move_to(servo, 0)
+                print("REARM -> 90 deg (home)")
+                move_to(servo, 90)
 
             elif cmd == "s":
                 print("Sweep 0 -> 180")
@@ -150,7 +150,7 @@ def main():
     except KeyboardInterrupt:
         print()
 
-    move_to(servo, 0)
+    move_to(servo, 90)
     time.sleep(0.3)
     servo.detach()
     print("Servo detached. Done.")
