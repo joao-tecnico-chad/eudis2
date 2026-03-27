@@ -43,9 +43,11 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         .video-panel { flex: 1; min-width: 0; display: flex; align-items: center;
                        justify-content: center; padding: 10px; background: #0a0a1a;
                        position: relative; }
-        .video-panel img { max-width: 100%%; max-height: 100%%; object-fit: contain;
-                           border: 1px solid #1a2332; border-radius: 3px; }
-        #overlay { position: absolute; top: 0; left: 0; pointer-events: none; }
+        .video-container { position: relative; display: inline-block; }
+        .video-container img { max-width: 100%%; max-height: 100%%; display: block;
+                               border: 1px solid #1a2332; border-radius: 3px; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%%; height: 100%%;
+                   pointer-events: none; }
 
         .side-panel { width: 260px; min-width: 260px; background: #0d1117;
                       border-left: 1px solid #1a2332; padding: 12px; overflow-y: auto;
@@ -80,9 +82,11 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <span class="status-badge badge-monitoring" id="status-badge">MONITORING</span>
     </div>
     <div class="main">
-        <div class="video-panel" id="video-panel">
-            <img id="stream" src="/stream" alt="Live Feed">
-            <canvas id="overlay"></canvas>
+        <div class="video-panel">
+            <div class="video-container">
+                <img id="stream" src="/stream" alt="Live Feed">
+                <canvas id="overlay"></canvas>
+            </div>
         </div>
         <div class="side-panel">
             <div class="stat-row">
@@ -126,18 +130,18 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         const ctx = canvas.getContext('2d');
 
         function drawBoxes(detections, nnSize) {
-            // Match canvas to the displayed image size and position
-            const rect = img.getBoundingClientRect();
-            canvas.style.left = rect.left + 'px';
-            canvas.style.top = rect.top + 'px';
-            canvas.width = rect.width;
-            canvas.height = rect.height;
+            const w = img.clientWidth;
+            const h = img.clientHeight;
+            if (!w || !h) return;
 
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.width = w;
+            canvas.height = h;
+
+            ctx.clearRect(0, 0, w, h);
             if (!detections || !detections.length) return;
 
-            const sx = rect.width / nnSize[0];
-            const sy = rect.height / nnSize[1];
+            const sx = w / nnSize[0];
+            const sy = h / nnSize[1];
 
             for (const d of detections) {
                 const x1 = d[0] * sx, y1 = d[1] * sy;
@@ -150,8 +154,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
 
                 ctx.fillStyle = armed ? '#ff0' : '#0f0';
-                ctx.font = '12px monospace';
-                ctx.fillText('drone ' + (conf * 100).toFixed(0) + '%%', x1, y1 - 4);
+                ctx.font = '14px monospace';
+                ctx.fillText('drone ' + (conf * 100).toFixed(0) + '%%', x1, y1 - 6);
             }
         }
 
