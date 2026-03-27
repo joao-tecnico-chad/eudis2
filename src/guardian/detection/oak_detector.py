@@ -28,11 +28,18 @@ class OakDetector(DetectorABC):
 
         self._pipeline = dai.Pipeline()
 
-        # Single camera output at NN resolution
         cam = self._pipeline.create(dai.node.Camera).build()
-        cam_out = cam.requestOutput(
+
+        # BGR for NN inference
+        nn_out = cam.requestOutput(
             (self._config.img_size, self._config.img_size),
             dai.ImgFrame.Type.BGR888p,
+        )
+
+        # NV12 for hardware MJPEG encoder (encoder requires NV12)
+        enc_out = cam.requestOutput(
+            (self._config.img_size, self._config.img_size),
+            dai.ImgFrame.Type.NV12,
         )
 
         # Neural network
@@ -40,13 +47,13 @@ class OakDetector(DetectorABC):
         nn.setBlobPath(str(blob_path))
         nn.setNumInferenceThreads(2)
         nn.input.setBlocking(False)
-        cam_out.link(nn.input)
+        nn_out.link(nn.input)
 
-        # Hardware MJPEG encoder — same stream, encoded on VPU
+        # Hardware MJPEG encoder
         encoder = self._pipeline.create(dai.node.VideoEncoder)
         encoder.setDefaultProfilePreset(15, dai.VideoEncoderProperties.Profile.MJPEG)
         encoder.setQuality(self._config.jpeg_quality)
-        cam_out.link(encoder.input)
+        enc_out.link(encoder.input)
 
         # Output queues
         self._q_nn = nn.out.createOutputQueue(maxSize=4, blocking=False)
