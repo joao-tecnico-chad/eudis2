@@ -15,7 +15,7 @@ set -e
 USER="guardian"
 WORKDIR="/home/$USER/eudis2"
 VENV="$WORKDIR/venv/bin/python"
-MODEL="models/yolov6n_416.rvc2.tar.xz"
+MODEL="models/yolov6n_640.rvc2.tar.xz"
 
 echo "=== Installing Drone Guardian Service ==="
 
