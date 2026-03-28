@@ -120,6 +120,13 @@ if settings["servo_enabled"]:
         print(f"Servo: {e}")
 
 
+def reset_altitude():
+    global baro_ref, alt_delta
+    if baro is not None:
+        baro_ref = baro_alt
+        alt_delta = 0.0
+
+
 def fire_servo():
     global servo_ready
     if servo is None or not servo_ready or not settings["servo_enabled"]:
@@ -452,11 +459,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps(settings).encode())
         elif self.path == "/reset-alt":
-            with lock:
-                global baro_ref, alt_delta
-                if baro is not None:
-                    baro_ref = baro_alt
-                    alt_delta = 0.0
+            reset_altitude()
             self.send_response(200)
             self.end_headers()
             self.wfile.write(b"ok")
