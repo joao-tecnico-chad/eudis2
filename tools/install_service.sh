@@ -19,23 +19,49 @@ MODEL="models/yolov6n_416.rvc2.tar.xz"
 
 echo "=== Installing Drone Guardian Service ==="
 
-# Enable pigpiod
-echo "Enabling pigpiod..."
-sudo systemctl enable pigpiod
-sudo systemctl start pigpiod 2>/dev/null || true
+# Create pigpiod service if not exists
+if ! systemctl list-unit-files | grep -q pigpiod; then
+    echo "Creating pigpiod service..."
+    sudo tee /etc/systemd/system/pigpiod.service > /dev/null << EOF2
+[Unit]
+Description=pigpio daemon
+After=local-fs.target
+
+[Service]
+Type=forking
+ExecStart=/usr/local/bin/pigpiod
+ExecStop=/bin/kill -SIGTERM \$MAINPID
+
+[Install]
+WantedBy=multi-user.target
+EOF2
+fi
+
+# Find pigpiod binary
+PIGPIO_BIN=$(which pigpiod 2>/dev/null || echo "/usr/local/bin/pigpiod")
+if [ -f "$PIGPIO_BIN" ]; then
+    # Update ExecStart path
+    sudo sed -i "s|ExecStart=.*pigpiod|ExecStart=$PIGPIO_BIN|" /etc/systemd/system/pigpiod.service 2>/dev/null
+    sudo systemctl daemon-reload
+    sudo systemctl enable pigpiod
+    sudo systemctl start pigpiod 2>/dev/null || true
+    echo "pigpiod enabled"
+else
+    echo "WARNING: pigpiod not found. Run: pip install pigpio"
+fi
 
 # Create service
-echo "Creating systemd service..."
+echo "Creating drone-guardian service..."
 sudo tee /etc/systemd/system/drone-guardian.service > /dev/null << EOF
 [Unit]
 Description=Drone Guardian — Drone Detection & Neutralisation
-After=network.target pigpiod.service
-Wants=pigpiod.service
+After=network.target
 
 [Service]
 Type=simple
 User=$USER
 WorkingDirectory=$WORKDIR
+ExecStartPre=/bin/bash -c '$PIGPIO_BIN 2>/dev/null || true'
 ExecStart=$VENV tools/detect_and_fire.py --model $MODEL
 Restart=always
 RestartSec=5
