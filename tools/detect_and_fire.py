@@ -130,14 +130,22 @@ def reset_altitude():
         alt_delta = 0.0
 
 
+servo_current_angle = HOME_ANGLE
+
+
 def move_servo(target_angle, speed=50):
     """Move servo to angle with stepping (matches test_servo.py behavior)."""
-    current = [HOME_ANGLE]  # mutable for closure
+    global servo_current_angle
+
+    if speed >= 100:
+        servo.value = angle_to_value(target_angle)
+        servo_current_angle = target_angle
+        return
 
     step_size = 0.5 + (speed / 100.0) * 4.5
     step_delay = 0.030 - (speed / 100.0) * 0.028
-    direction = 1 if target_angle > current[0] else -1
-    pos = current[0]
+    direction = 1 if target_angle > servo_current_angle else -1
+    pos = servo_current_angle
 
     while True:
         remaining = abs(target_angle - pos)
@@ -148,7 +156,8 @@ def move_servo(target_angle, speed=50):
         pos += direction * step_size
         servo.value = angle_to_value(pos)
         time.sleep(step_delay)
-    current[0] = target_angle
+
+    servo_current_angle = target_angle
 
 
 def fire_servo():
