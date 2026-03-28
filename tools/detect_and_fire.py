@@ -130,21 +130,42 @@ def reset_altitude():
         alt_delta = 0.0
 
 
+def move_servo(target_angle, speed=50):
+    """Move servo to angle with stepping (matches test_servo.py behavior)."""
+    current = [HOME_ANGLE]  # mutable for closure
+
+    step_size = 0.5 + (speed / 100.0) * 4.5
+    step_delay = 0.030 - (speed / 100.0) * 0.028
+    direction = 1 if target_angle > current[0] else -1
+    pos = current[0]
+
+    while True:
+        remaining = abs(target_angle - pos)
+        if remaining < step_size:
+            pos = target_angle
+            servo.value = angle_to_value(pos)
+            break
+        pos += direction * step_size
+        servo.value = angle_to_value(pos)
+        time.sleep(step_delay)
+    current[0] = target_angle
+
+
 def fire_servo():
     global servo_ready
     if servo is None or not servo_ready or not settings["servo_enabled"]:
         return
     servo_ready = False
-    servo.value = angle_to_value(FIRE_ANGLE)
     print("\n*** FIRED ***")
 
-    def rearm():
+    def fire_cycle():
         global servo_ready
+        move_servo(FIRE_ANGLE, speed=100)
         time.sleep(2.0)
-        servo.value = angle_to_value(HOME_ANGLE)
+        move_servo(HOME_ANGLE, speed=50)
         servo_ready = True
         print("*** REARMED ***")
-    threading.Thread(target=rearm, daemon=True).start()
+    threading.Thread(target=fire_cycle, daemon=True).start()
 
 
 # --- Tracker ---
