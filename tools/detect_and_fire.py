@@ -130,25 +130,30 @@ def reset_altitude():
         alt_delta = 0.0
 
 
-def move_servo(target_angle, speed=50):
-    """Move servo to angle with stepping (matches test_servo.py behavior)."""
-    current = [HOME_ANGLE]  # mutable for closure
+servo_angle = HOME_ANGLE
 
+
+def move_servo_to(target, speed=50):
+    """Move servo with stepping — identical to test_servo.py move_to()."""
+    global servo_angle
+    if speed >= 100:
+        servo.value = angle_to_value(target)
+        servo_angle = target
+        return
     step_size = 0.5 + (speed / 100.0) * 4.5
     step_delay = 0.030 - (speed / 100.0) * 0.028
-    direction = 1 if target_angle > current[0] else -1
-    pos = current[0]
-
+    direction = 1 if target > servo_angle else -1
+    pos = servo_angle
     while True:
-        remaining = abs(target_angle - pos)
+        remaining = abs(target - pos)
         if remaining < step_size:
-            pos = target_angle
+            pos = target
             servo.value = angle_to_value(pos)
             break
         pos += direction * step_size
         servo.value = angle_to_value(pos)
         time.sleep(step_delay)
-    current[0] = target_angle
+    servo_angle = target
 
 
 def fire_servo():
@@ -160,13 +165,9 @@ def fire_servo():
 
     def fire_cycle():
         global servo_ready
-        # Set directly and hold for consistent movement
-        servo.value = angle_to_value(FIRE_ANGLE)
-        time.sleep(0.5)  # let servo reach position
-        servo.value = angle_to_value(FIRE_ANGLE)  # reinforce
+        move_servo_to(FIRE_ANGLE, speed=50)
         time.sleep(2.0)
-        servo.value = angle_to_value(HOME_ANGLE)
-        time.sleep(0.5)  # let servo reach home
+        move_servo_to(HOME_ANGLE, speed=50)
         servo_ready = True
         print("*** REARMED ***")
     threading.Thread(target=fire_cycle, daemon=True).start()
