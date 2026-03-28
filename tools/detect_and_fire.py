@@ -110,10 +110,10 @@ if settings["servo_enabled"]:
         from gpiozero.pins.pigpio import PiGPIOFactory
         try:
             servo = GpioServo(args.servo_gpio, pin_factory=PiGPIOFactory(),
-                              min_pulse_width=0.0009, max_pulse_width=0.0021)
+                              min_pulse_width=0.0005, max_pulse_width=0.0025)
         except Exception:
             servo = GpioServo(args.servo_gpio,
-                              min_pulse_width=0.0009, max_pulse_width=0.0021)
+                              min_pulse_width=0.0005, max_pulse_width=0.0025)
         servo.value = angle_to_value(HOME_ANGLE)
         print(f"Servo: GPIO{args.servo_gpio}")
     except (ImportError, Exception) as e:
