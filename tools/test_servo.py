@@ -108,9 +108,9 @@ def main():
                 break
 
             elif cmd == "f":
-                print("FIRE -> 135 deg")
-                move_to(servo, 135)
-                time.sleep(1.0)
+                print("FIRE -> 180 deg")
+                move_to(servo, 180)
+                time.sleep(2.0)
                 print("REARM -> 90 deg (home)")
                 move_to(servo, 90)
 
