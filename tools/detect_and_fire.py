@@ -109,13 +109,16 @@ if settings["servo_enabled"]:
         from gpiozero import Servo as GpioServo
         from gpiozero.pins.pigpio import PiGPIOFactory
         try:
-            servo = GpioServo(args.servo_gpio, pin_factory=PiGPIOFactory(),
+            factory = PiGPIOFactory()
+            servo = GpioServo(args.servo_gpio, pin_factory=factory,
                               min_pulse_width=0.0005, max_pulse_width=0.0025)
-        except Exception:
+            print(f"Servo: GPIO{args.servo_gpio} (pigpio)")
+        except Exception as e:
+            print(f"Servo pigpio failed: {e}")
             servo = GpioServo(args.servo_gpio,
                               min_pulse_width=0.0005, max_pulse_width=0.0025)
+            print(f"Servo: GPIO{args.servo_gpio} (native fallback - PWM may not work!)")
         servo.value = angle_to_value(HOME_ANGLE)
-        print(f"Servo: GPIO{args.servo_gpio}")
     except (ImportError, Exception) as e:
         print(f"Servo: {e}")
 
