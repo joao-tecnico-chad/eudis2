@@ -21,8 +21,8 @@ import sys
 GPIO_PIN = 18
 
 # Hitec HS-5085MG pulse range (seconds)
-MIN_PULSE = 0.0009  # 900 µs
-MAX_PULSE = 0.0021  # 2100 µs
+MIN_PULSE = 0.0005  # 500 µs
+MAX_PULSE = 0.0025  # 2500 µs
 
 # Speed: 1 (slowest) to 100 (instant)
 current_speed = 50
