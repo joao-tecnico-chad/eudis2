@@ -215,7 +215,8 @@ HTML = """<!DOCTYPE html>
 
   .video{flex:1;display:flex;align-items:center;justify-content:center;background:#000}
   .wrap{position:relative;display:inline-block;line-height:0}
-  .wrap img{max-width:100%;max-height:100vh;display:block}
+  .wrap{transform:rotate(-90deg)}
+  .wrap img{max-width:100vh;max-height:100vw;display:block}
   .wrap canvas{position:absolute;top:0;left:0;pointer-events:none}
 
   .panel{width:300px;background:var(--panel);border-left:1px solid var(--border);
