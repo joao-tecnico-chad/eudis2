@@ -97,7 +97,7 @@ if not args.no_baro:
 servo = None
 servo_ready = True
 HOME_ANGLE = 90.0
-FIRE_ANGLE = 135.0
+FIRE_ANGLE = 180.0
 
 
 def angle_to_value(angle):
