@@ -160,9 +160,13 @@ def fire_servo():
 
     def fire_cycle():
         global servo_ready
-        move_servo(FIRE_ANGLE, speed=100)
+        # Set directly and hold for consistent movement
+        servo.value = angle_to_value(FIRE_ANGLE)
+        time.sleep(0.5)  # let servo reach position
+        servo.value = angle_to_value(FIRE_ANGLE)  # reinforce
         time.sleep(2.0)
-        move_servo(HOME_ANGLE, speed=50)
+        servo.value = angle_to_value(HOME_ANGLE)
+        time.sleep(0.5)  # let servo reach home
         servo_ready = True
         print("*** REARMED ***")
     threading.Thread(target=fire_cycle, daemon=True).start()
